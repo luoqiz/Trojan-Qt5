@@ -456,7 +456,7 @@ TrojanGoSettings ConfigHelper::parseTrojanGoSettings(const QJsonObject &settings
     trojanGoSettings.mux.muxIdleTimeout = settings["mux"].toObject()["mux_idle_timeout"].toInt();
     trojanGoSettings.websocket.enable = settings["websocket"].toObject()["enable"].toBool();
     trojanGoSettings.websocket.path = settings["websocket"].toObject()["path"].toBool();
-    trojanGoSettings.websocket.hostname = settings["websocket"].toObject()["hostname"].toString();
+    trojanGoSettings.websocket.host = settings["websocket"].toObject()["host"].toString();
     trojanGoSettings.shadowsocks.enable = settings["shadowsocks"].toObject()["enable"].toBool();
     trojanGoSettings.shadowsocks.method = settings["shadowsocks"].toObject()["method"].toString();
     trojanGoSettings.shadowsocks.password = settings["shadowsocks"].toObject()["password"].toString();
@@ -481,7 +481,7 @@ QJsonObject ConfigHelper::exportTrojanGoSettings(const TrojanGoSettings &setting
     QJsonObject websocket;
     websocket["enable"] = settings.websocket.enable;
     websocket["path"] = settings.websocket.path;
-    websocket["hostname"] = settings.websocket.hostname;
+    websocket["host"] = settings.websocket.host;
     object["websocket"] = websocket;
     QJsonObject shadowsocks;
     shadowsocks["enable"] = settings.shadowsocks.enable;
@@ -1071,7 +1071,7 @@ void ConfigHelper::generateTrojanJson(TQProfile &profile)
     QJsonObject websocket;
     websocket["enabled"] = profile.trojanGoSettings.websocket.enable;
     websocket["path"] = profile.trojanGoSettings.websocket.path;
-    websocket["hostname"] = profile.trojanGoSettings.websocket.hostname;
+    websocket["host"] = profile.trojanGoSettings.websocket.host;
     configObj["websocket"] = QJsonValue(websocket);
     QJsonObject shadowsocks;
     shadowsocks["enabled"] = profile.trojanGoSettings.shadowsocks.enable;

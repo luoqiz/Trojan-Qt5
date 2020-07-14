@@ -12,8 +12,8 @@ struct muxSettings {
 
 struct websocketSettings {
     bool enable = false;
-    QString path;
-    QString hostname;
+    QString path = "/";
+    QString host;
 };
 
 struct shadowsocksSettings {

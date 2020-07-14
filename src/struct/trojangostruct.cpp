@@ -14,13 +14,13 @@ QDataStream& operator >> (QDataStream &in, muxSettings &m)
 
 QDataStream& operator << (QDataStream &out, const websocketSettings &w)
 {
-    out << w.enable << w.path << w.hostname;
+    out << w.enable << w.path << w.host;
     return out;
 }
 
 QDataStream& operator >> (QDataStream &in, websocketSettings &w)
 {
-    in >> w.enable >> w.path >> w.hostname;
+    in >> w.enable >> w.path >> w.host;
     return in;
 }
 

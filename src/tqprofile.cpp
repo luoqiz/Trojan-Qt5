@@ -427,7 +427,7 @@ TQProfile TQProfile::fromTrojanUri(const std::string& trojanUri) const
     result.trojanGoSettings.mux.enable = query.queryItemValue("mux").toInt();
     result.trojanGoSettings.websocket.enable = query.queryItemValue("ws").toInt();
     result.trojanGoSettings.websocket.path = query.queryItemValue("wspath");
-    result.trojanGoSettings.websocket.hostname = query.queryItemValue("wshost");
+    result.trojanGoSettings.websocket.host = query.queryItemValue("wshost");
     result.trojanGoSettings.shadowsocks.enable = query.queryItemValue("ss").toInt();
     if (!query.queryItemValue("ssmethod").isEmpty())
         result.trojanGoSettings.shadowsocks.method = query.queryItemValue("ssmethod");
@@ -582,7 +582,7 @@ QString TQProfile::toVmessUri() const
 QString TQProfile::toTrojanUri() const
 {
     QString trojanUri = password.toUtf8().toPercentEncoding() + "@" + serverAddress + ":" + QString::number(serverPort) + "?allowinsecure=" + QString::number(int(!verifyCertificate)) + "&sni=" + sni;
-    trojanUri += "&mux=" + QString::number(int(trojanGoSettings.mux.enable)) + "&ws=" + QString::number(int(trojanGoSettings.websocket.enable)) + "&wspath=" + trojanGoSettings.websocket.path + "&wshost=" + trojanGoSettings.websocket.hostname + "&ss=" + QString::number(int(trojanGoSettings.shadowsocks.enable)) + "&ssmethod=" + trojanGoSettings.shadowsocks.method + "&sspasswd=" + trojanGoSettings.shadowsocks.password;
+    trojanUri += "&mux=" + QString::number(int(trojanGoSettings.mux.enable)) + "&ws=" + QString::number(int(trojanGoSettings.websocket.enable)) + "&wspath=" + trojanGoSettings.websocket.path + "&wshost=" + trojanGoSettings.websocket.host + "&ss=" + QString::number(int(trojanGoSettings.shadowsocks.enable)) + "&ssmethod=" + trojanGoSettings.shadowsocks.method + "&sspasswd=" + trojanGoSettings.shadowsocks.password;
     trojanUri += "&group=" + group.toUtf8().toPercentEncoding();
     QByteArray uri = QByteArray(trojanUri.toUtf8());
     uri.prepend("trojan://");

@@ -31,7 +31,7 @@ void TrojanGoWidget::setSettings(const TrojanGoSettings &st)
     // websocket settings
     ui->websocketCB->setChecked(st.websocket.enable);
     ui->websocketPathEdit->setText(st.websocket.path);
-    ui->websocketHostnameEdit->setText(st.websocket.hostname);
+    ui->websocketHostEdit->setText(st.websocket.host);
     // shadowsocks settings
     ui->shadowsocksCB->setChecked(st.shadowsocks.enable);
     ui->methodCB->setCurrentText(st.shadowsocks.method);
@@ -80,9 +80,9 @@ void TrojanGoWidget::on_websocketPathEdit_textEdited(const QString &arg1)
     settings.websocket.path = arg1;
 }
 
-void TrojanGoWidget::on_websocketHostnameEdit_textEdited(const QString &arg1)
+void TrojanGoWidget::on_websocketHostEdit_textEdited(const QString &arg1)
 {
-    settings.websocket.hostname = arg1;
+    settings.websocket.host = arg1;
 }
 
 void TrojanGoWidget::on_shadowsocksCB_stateChanged(int arg1)

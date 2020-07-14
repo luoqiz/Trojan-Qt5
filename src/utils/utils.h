@@ -32,6 +32,8 @@ public:
     static QList<WsHeader> convertQJsonObject(const QJsonObject &object);
     static QJsonObject convertWsHeader(QList<WsHeader> headers);
 
+    static void createProcessWithoutWindow(QString application, QString arg);
+
 };
 
 #endif // UTILS_H

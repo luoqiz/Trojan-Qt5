@@ -5,6 +5,9 @@
 #include <QStyle>
 #include <QJsonObject>
 #include <QJsonDocument>
+#if defined (Q_OS_WIN)
+#include <Windows.h>
+#endif
 
 Utils::Utils()
 {}
@@ -132,6 +135,29 @@ QList<WsHeader> Utils::convertQJsonObject(const QJsonObject &object)
         wsHeaders.append(header);
     }
     return wsHeaders;
+}
+
+void Utils::createProcessWithoutWindow(QString application, QString arg)
+{
+#if defined (Q_OS_WIN)
+    LPTSTR APPLICATION = (LPTSTR) application.utf16();
+    LPTSTR ARG = (LPTSTR) arg.utf16();
+
+    STARTUPINFO siStartupInfo;
+    PROCESS_INFORMATION piProcessInfo;
+    memset(&siStartupInfo, 0, sizeof(siStartupInfo));
+    memset(&piProcessInfo, 0, sizeof(piProcessInfo));
+
+    siStartupInfo.cb = sizeof(siStartupInfo);
+    siStartupInfo.dwFlags = STARTF_USESHOWWINDOW | STARTF_FORCEOFFFEEDBACK | STARTF_USESTDHANDLES;
+    siStartupInfo.wShowWindow = SW_HIDE;
+
+    if(CreateProcess(APPLICATION, ARG, 0, 0, FALSE, 0, 0, 0, &siStartupInfo, &piProcessInfo) == FALSE)
+    {
+        CloseHandle(piProcessInfo.hThread);
+        CloseHandle(piProcessInfo.hProcess);
+    }
+#endif
 }
 
 /*
