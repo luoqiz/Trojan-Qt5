@@ -84,8 +84,8 @@
    <string>Connection Manager</string>
   </property>
   <property name="windowIcon">
-   <iconset>
-    <normaloff>:/icons/icons/trojan-qt5_new_white.png</normaloff>:/icons/icons/trojan-qt5_new_white.png</iconset>
+   <iconset resource="../resources/icons.qrc">
+    <normaloff>:/icons/icons/trojan-qt5.png</normaloff>:/icons/icons/trojan-qt5.png</iconset>
   </property>
   <property name="toolButtonStyle">
    <enum>Qt::ToolButtonFollowStyle</enum>
@@ -106,12 +106,6 @@
         <pointsize>14</pointsize>
        </font>
       </property>
-      <property name="styleSheet">
-       <string notr="true">QLineEdit[text=&quot;&quot;]
-{ 
-color: rgb(181,181,181); 
-}</string>
-      </property>
       <property name="placeholderText">
        <string>Input to filter</string>
       </property>
@@ -122,20 +116,6 @@ color: rgb(181,181,181);
     </item>
     <item>
      <widget class="QTableView" name="connectionView">
-      <property name="styleSheet">
-       <string notr="true">QTableView
-{
-selection-background-color: rgb(0,147,255);
-}
-
-QHeaderView::section
-{
-background-color: white;
-border: 1px solid white;
-color: rgb(112,112,112);
-text-align: left;
-}</string>
-      </property>
       <property name="editTriggers">
        <set>QAbstractItemView::NoEditTriggers</set>
       </property>
@@ -143,7 +123,7 @@ text-align: left;
        <bool>false</bool>
       </property>
       <property name="selectionMode">
-       <enum>QAbstractItemView::SingleSelection</enum>
+       <enum>QAbstractItemView::ExtendedSelection</enum>
       </property>
       <property name="selectionBehavior">
        <enum>QAbstractItemView::SelectRows</enum>
@@ -168,18 +148,13 @@ text-align: left;
    </layout>
   </widget>
   <widget class="QStatusBar" name="statusbar">
-   <property name="styleSheet">
-    <string notr="true">background: rgb(247,247,247);</string>
+   <property name="sizeGripEnabled">
+    <bool>false</bool>
    </property>
   </widget>
   <widget class="QToolBar" name="toolBar">
    <property name="windowTitle">
     <string>Show Toolbar</string>
-   </property>
-   <property name="styleSheet">
-    <string notr="true">background : rgb(255, 255, 255);
-border: none;
-spacing: 35px;</string>
    </property>
    <property name="movable">
     <bool>false</bool>
@@ -232,41 +207,6 @@ spacing: 35px;</string>
      <bold>true</bold>
     </font>
    </property>
-   <property name="styleSheet">
-    <string notr="true">QMenuBar
-{
-     background: rgb(247,247,247);
-}
-
-QMenuBar::item
-{
-	padding-top: 10px;
-	padding-bottom: 10px;
-	padding-left: 10px;
-	padding-right: 10px;
-}
-
-QMenuBar::item::pressed
-{
-	background : rgb(64,155,255);
-	color: rgb(255,255,255);
-}
-
-QMenu::item:selected { 
-	background : rgba(64,155,255,76%);
-    color: rgb(255,255,255);
-}</string>
-   </property>
-   <widget class="QMenu" name="menuManually">
-    <property name="title">
-      <string>&amp;Manually</string>
-     </property>
-     <addaction name="actionManuallySS"/>
-     <addaction name="actionManuallySSR"/>
-     <addaction name="actionManuallyVmess"/>
-     <addaction name="actionManuallyTrojan"/>
-     <addaction name="actionManuallySnell"/>
-    </widget>
    <widget class="QMenu" name="menuConnection">
     <property name="font">
      <font>
@@ -274,7 +214,7 @@ QMenu::item:selected {
      </font>
     </property>
     <property name="title">
-     <string>&amp;Connection</string>
+     <string>Connection</string>
     </property>
     <widget class="QMenu" name="menuAdd">
      <property name="title">
@@ -284,6 +224,19 @@ QMenu::item:selected {
       <iconset theme="list-add">
        <normaloff>.</normaloff>.</iconset>
      </property>
+     <widget class="QMenu" name="menuManually">
+      <property name="title">
+       <string>Manually</string>
+      </property>
+      <addaction name="actionAdd_SOCKS5_Manually"/>
+      <addaction name="actionAdd_HTTP_Manually"/>
+      <addaction name="actionAdd_SS_Manually"/>
+      <addaction name="actionAdd_SSR_Manually"/>
+      <addaction name="actionAdd_Vmess_Manually"/>
+      <addaction name="actionAdd_Trojan_Manually"/>
+      <addaction name="actionAdd_Snell_Manually"/>
+      <addaction name="actionAdd_NaiveProxy_Manually"/>
+     </widget>
      <addaction name="menuManually"/>
      <addaction name="actionURI"/>
      <addaction name="actionPasteBoardURI"/>
@@ -303,6 +256,7 @@ QMenu::item:selected {
     <addaction name="actionDisconnect"/>
     <addaction name="actionTestLatency"/>
     <addaction name="actionTestAllLatency"/>
+    <addaction name="actionClearTraffic"/>
     <addaction name="separator"/>
     <addaction name="actionMoveUp"/>
     <addaction name="actionMoveDown"/>
@@ -316,7 +270,7 @@ QMenu::item:selected {
      </font>
     </property>
     <property name="title">
-     <string>Fi&amp;le</string>
+     <string>File</string>
     </property>
     <addaction name="actionImportGUIJson"/>
     <addaction name="actionImportConfigYaml"/>
@@ -334,9 +288,10 @@ QMenu::item:selected {
      </font>
     </property>
     <property name="title">
-     <string>Settin&amp;gs</string>
+     <string>Settings</string>
     </property>
     <addaction name="actionGeneralSettings"/>
+    <addaction name="actionAdvanceModeSettings"/>
     <addaction name="actionUserRuleSerttings"/>
     <addaction name="separator"/>
     <addaction name="actionShowFilterBar"/>
@@ -348,7 +303,7 @@ QMenu::item:selected {
      </font>
     </property>
     <property name="title">
-     <string>&amp;Help</string>
+     <string>Help</string>
     </property>
     <addaction name="actionAbout"/>
     <addaction name="actionAboutQt"/>
@@ -628,6 +583,16 @@ QMenu::item:selected {
     </font>
    </property>
   </action>
+  <action name="actionClearTraffic">
+   <property name="text">
+    <string>Clear Traffic Stats</string>
+   </property>
+   <property name="font">
+    <font>
+     <family>Arial</family>
+    </font>
+   </property>
+  </action>
   <action name="actionImportGUIJson">
    <property name="text">
     <string>&amp;Import Connections from gui-config.json</string>
@@ -830,7 +795,7 @@ QMenu::item:selected {
   </action>
   <action name="actionFromShadowrocketJson">
    <property name="icon">
-    <iconset theme="ui">
+    <iconset theme="ui" resource="../resources/icons.qrc">
      <normaloff>:/icons/actions/document-open.png</normaloff>:/icons/actions/document-open.png</iconset>
    </property>
    <property name="text">
@@ -847,9 +812,56 @@ QMenu::item:selected {
     <string>PasteBoardURI</string>
    </property>
   </action>
+  <action name="actionAdd_SOCKS5_Manually">
+   <property name="text">
+    <string>Add SOCKS5 Manually</string>
+   </property>
+  </action>
+  <action name="actionAdd_HTTP_Manually">
+   <property name="text">
+    <string>Add HTTP Manually</string>
+   </property>
+  </action>
+  <action name="actionAdd_SS_Manually">
+   <property name="text">
+    <string>Add SS Manually</string>
+   </property>
+  </action>
+  <action name="actionAdd_SSR_Manually">
+   <property name="text">
+    <string>Add SSR Manually</string>
+   </property>
+  </action>
+  <action name="actionAdd_Vmess_Manually">
+   <property name="text">
+    <string>Add Vmess Manually</string>
+   </property>
+  </action>
+  <action name="actionAdd_Trojan_Manually">
+   <property name="text">
+    <string>Add Trojan Manually</string>
+   </property>
+  </action>
+  <action name="actionAdd_Snell_Manually">
+   <property name="text">
+    <string>Add Snell Manually</string>
+   </property>
+  </action>
+  <action name="actionAdd_NaiveProxy_Manually">
+   <property name="text">
+    <string>Add NaiveProxy Manually</string>
+   </property>
+  </action>
+  <action name="actionAdvanceModeSettings">
+   <property name="text">
+    <string>Advance Mode Settings</string>
+   </property>
+  </action>
  </widget>
  <layoutdefault spacing="6" margin="11"/>
- <resources/>
+ <resources>
+  <include location="../resources/icons.qrc"/>
+ </resources>
  <connections>
   <connection>
    <sender>actionShowFilterBar</sender>

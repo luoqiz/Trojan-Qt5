@@ -69,17 +69,17 @@ QVariant ConnectionItem::data(int column, int role) const
             if (role == Qt::ForegroundRole) {
                 return QVariant(QColor::fromRgb(112, 112, 112));
             } else if (role == Qt::DisplayRole) {
-                return QVariant(convertBytesToHumanReadable(con->profile.currentUsage));
+                return QVariant(convertBytesToHumanReadable(con->profile.currentDownloadUsage + con->profile.currentUploadUsage));
             } else {
-                return QVariant(con->profile.currentUsage);
+                return QVariant(con->profile.currentDownloadUsage + con->profile.currentUploadUsage);
             }
         case 6://data usage (total)
             if (role == Qt::ForegroundRole) {
                 return QVariant(QColor::fromRgb(112, 112, 112));
             } else if (role == Qt::DisplayRole) {
-                return QVariant(convertBytesToHumanReadable(con->profile.totalUsage));
+                return QVariant(convertBytesToHumanReadable(con->profile.totalDownloadUsage + con->profile.totalUploadUsage));
             } else {
-                return QVariant(con->profile.totalUsage);
+                return QVariant(con->profile.totalDownloadUsage + con->profile.totalUploadUsage);
             }
         case 7://reset date
             if (role == Qt::ForegroundRole) {
@@ -116,14 +116,18 @@ QVariant ConnectionItem::data(int column, int role) const
 
 QString ConnectionItem::convertType(TQProfile profile)
 {
-    if (profile.type == "ss")
+    if (profile.type == "socks5")
+        return "SOCKS5";
+    else if (profile.type == "http")
+        return "HTTP";
+    else if (profile.type == "ss")
         return QString("SS / %1").arg(profile.plugin.split(".")[0].length() == 0 ? "NONE" : profile.plugin.split(".")[0].toUpper());
     else if (profile.type == "ssr")
         return QString("SSR / %1").arg(profile.obfs.toUpper());
     else if (profile.type == "trojan")
-        return "TROJAN";
+        return "TROJAN / GO";
     else if (profile.type == "vmess")
-        return QString("VMESS / %1").arg(profile.vmessSettings["network"].toString() == "ws" ? "WEBSOCKET" : profile.vmessSettings["network"].toString().toUpper());
+        return QString("VMESS / %1").arg(profile.vmessSettings.network == "ws" ? "WEBSOCKET" : profile.vmessSettings.network.toUpper());
     else if (profile.type == "snell")
         return QString("SNELL / %1").arg(profile.obfs.toUpper());
     else
@@ -201,6 +205,19 @@ QString ConnectionItem::convertBytesToHumanReadable(quint64 quot)
 void ConnectionItem::testLatency()
 {
     con->latencyTest();
+    emit latencyChanged();
+}
+
+void ConnectionItem::clearTraffic()
+{
+    TQProfile p;
+    p = con->getProfile();
+    p.currentDownloadUsage = 0;
+    p.currentUploadUsage = 0;
+    p.totalDownloadUsage = 0;
+    p.totalUploadUsage = 0;
+    con->setProfile(p);
+    emit dataUsageChanged(p.currentDownloadUsage + p.currentUploadUsage, p.totalDownloadUsage + p.totalUploadUsage);
 }
 
 Connection* ConnectionItem::getConnection()

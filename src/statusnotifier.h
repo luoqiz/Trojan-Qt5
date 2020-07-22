@@ -37,11 +37,12 @@ public:
     void initConnections();
     void updateMenu();
     void updateServersMenu();
-    void onCopyTerminalProxy();
+    void onCopyTerminalProxy(QString type);
     void onSetProxyToTelegram();
     void onTrojanSubscribeSettings();
 #if defined (Q_OS_WIN)
     void onInstallTAPDriver();
+    void onEnableUWPLoopback();
 #endif
     void showServerSpeedPlot();
 
@@ -95,11 +96,14 @@ private:
     QActionGroup *ServerGroup;
 
     QAction *serverSpeedPlot;
-    QAction *copyTerminalProxyCommand;
+    QMenu *copyTerminalProxyCommandMenu;
+    QAction *terminalWinStyle;
+    QAction *terminalUnixStyle;
     QAction *setProxyToTelegram;
     QAction *minimiseRestoreAction;
 #if defined (Q_OS_WIN)
     QAction *installTapDriver;
+    QAction *enableUWPLoopback;
 #endif
     QSystemTrayIcon systray;
     MainWindow *window;

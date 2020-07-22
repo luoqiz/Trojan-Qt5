@@ -23,6 +23,7 @@
 #include "connectiontablemodel.h"
 #include "connection.h"
 #include "tqsubscribe.h"
+#include "configstruct.h"
 
 class ConfigHelper : public QObject
 {
@@ -34,6 +35,10 @@ public:
      * This constructor will call readGeneralSettings().
      */
     explicit ConfigHelper(const QString &configuration, QObject *parent = nullptr);
+
+    void onConfigUpdateFromOldVersion();
+
+    static QStringList jsonArraytoStringlist(const QJsonArray &array);
 
     /*
      * Call read() function to read all connection profiles into
@@ -49,6 +54,7 @@ public:
      * member variables.
      */
     void readGeneralSettings();
+    void readAdvanceModeSettings();
 
     void save(const ConnectionTableModel &model);
 
@@ -58,78 +64,61 @@ public:
 
     void exportGuiConfigJson(const ConnectionTableModel& model, const QString &file);
 
+    static VmessSettings parseVmessSettings(const QJsonObject &settings);
+    static QJsonObject exportVmessSettings(const VmessSettings &settings);
+
+    static TrojanGoSettings parseTrojanGoSettings(const QJsonObject &settings);
+    static QJsonObject exportTrojanGoSettings(const TrojanGoSettings &settings);
+
     void importConfigYaml(ConnectionTableModel *model, const QString &file);
 
     void importShadowrocketJson(ConnectionTableModel *model, const QString &file);
 
     void exportShadowrocketJson(const ConnectionTableModel &model, const QString &file);
 
-    void exportTrojanSubscribe(const ConnectionTableModel &model, const QString &file);
-
-    static QJsonObject generateVmessSettings();
+    void exportSubscribe(const ConnectionTableModel &model, const QString &file);
 
     Connection* configJsonToConnection(const QString &file);
 
-    void connectionToJson(TQProfile &profile);
-
+    void generateSocks5HttpJson(QString type, TQProfile &profile);
     void generateV2rayJson(TQProfile &profile);
+    void generateTrojanJson(TQProfile &profile);
+    void generateSnellJson(TQProfile &profile);
 
     void generateHaproxyConf(const ConnectionTableModel &model);
 
-    //start those connections marked as auto-start
-    void startAllAutoStart(const ConnectionTableModel& model);
+    //start the first connection marked as auto-start
+    Connection* startAutoStart(const ConnectionTableModel& model);
 
     //create or delete start up item for shadowsocks-qt5
     void setStartAtLogin();
 
     /* some functions used to communicate with SettingsDialog */
-    QString getTheme() const;
-    QJsonObject getRoute() const;
-    int getFLSFingerPrint() const;
+    QJsonArray appendJsonArray(QJsonArray array1, QJsonArray array2);
+    QString parseDomainStrategy(QString ds) const;
     QString parseTLSFingerprint(int choice) const;
-    int  getToolbarStyle() const;
-    int  getLogLevel() const;
-    int getSocks5Port() const;
-    int getHttpPort() const;
-    int getPACPort() const;
-    int getHaproxyPort() const;
-    int getHaproxyStatusPort() const;
-    bool isEnableForwardProxy() const;
-    int getForwardProxyType() const;
-    QString getForwardProxyAddress() const;
-    int getForwardProxyPort() const;
-    bool isEnableForwardProxyAuthentication() const;
-    QString getForwardProxyUsername() const;
-    QString getForwardProxyPassword() const;
-    int getGfwlistUrl() const;
-    QString getUpdateUserAgent() const;
-    QString getFilterKeyword() const;
-    int getMaximumSubscribe() const;
-    bool isEnableTrojanAPI() const;
-    bool isEnableTrojanRouter() const;
-    int getTrojanAPIPort() const;
-    QString getTrojanCertPath() const;
-    QString getTrojanCipher() const;
-    QString getTrojanCipherTLS13() const;
-    int getBufferSize() const;
+
+    GeneralSettings getGeneralSettings() const;
+    InboundSettings getInboundSettings() const;
+    OutboundSettings getOutboundSettings() const;
+    TestSettings getTestSettings() const;
+    GraphSettings getGraphSettings() const;
+    RouterSettings getRouterSettings() const;
+    SubscribeSettings getSubscribeSettings() const;
+    CoreSettings getCoreSettings() const;
+    TUNTAPSettings getTUNTAPSettings() const;
+    STUNSettings getSTUNSettings() const;
+    ModeSettings getModeSettings() const;
     QString getSystemProxySettings() const;
+
     bool isTrojanOn() const;
     bool isEnableServerLoadBalance() const;
-    bool isShareOverLan() const;
-    bool isEnableIpv6Support() const;
-    bool isEnableHttpMode() const;
-    bool isHideWindowOnStartup() const;
-    bool isStartAtLogin() const;
-    bool isOnlyOneInstance() const;
-    bool isCheckPortAvailability() const;
-    bool isEnableNotification() const;
-    bool isHideDockIcon() const;
     bool isAutoUpdateSubscribes() const;
     bool isShowToolbar() const;
     bool isShowFilterBar() const;
-    bool isNativeMenuBar() const;
-    void setRoute(QJsonObject r);
-    void setGeneralSettings(int ts, bool hide, QString th, bool sal, bool oneInstance, bool cpa, bool en, bool hdi, bool nativeMB, int ll, bool hm, bool eis, bool sol, int sp, int hp, int pp, int ap, int hsp, bool efp, int fpt, QString fpa, int fpp, bool efpa, QString fpu, QString fppa, int glu, QString uua, QString fkw, int ms, int fp, bool eta, bool etr, int tap, QString tcp, QString tc, QString tct13, int bs);
+
+    void setGeneralSettings(GeneralSettings gs, InboundSettings is, OutboundSettings os, TestSettings es, SubscribeSettings ss, GraphSettings fs, RouterSettings rs, CoreSettings cs);
+    void setAdvanceModeSettings(TUNTAPSettings ts, STUNSettings ss, ModeSettings ms);
     void setSystemProxySettings(QString mode);
     void setTrojanOn(bool on);
     void setAutoUpdateSubscribes(bool update);
@@ -152,50 +141,23 @@ signals:
     void toolbarStyleChanged(const Qt::ToolButtonStyle);
 
 private:
-    QString theme;
-    QJsonObject route;
-    int logLevel;
-    int toolbarStyle;
-    bool enableHttpMode;
-    int socks5Port;
-    int httpPort;
-    int pacPort;
-    int haproxyStatusPort;
-    int haproxyPort;
-    bool enableForwardProxy;
-    int forwardProxyType;
-    QString forwardProxyAddress;
-    int forwardProxyPort;
-    bool enableForwardProxyAuthentication;
-    QString forwardProxyUsername;
-    QString forwardProxyPassword;
-    int gfwlistUrl;
-    QString updateUserAgent;
-    QString filterKeyword;
-    int maximumSubscribe;
-    bool enableTrojanAPI;
-    bool enableTrojanRouter;
-    int fingerprint;
-    int trojanAPIPort;
-    QString trojanCertPath;
-    QString trojanCipher;
-    QString trojanCipherTLS13;
+    GeneralSettings generalSettings;
+    InboundSettings inboundSettings;
+    OutboundSettings outboundSettings;
+    TestSettings testSettings;
+    GraphSettings graphSettings;
+    RouterSettings routerSettings;
+    SubscribeSettings subscribeSettings;
+    CoreSettings coreSettings;
+    TUNTAPSettings tuntapSettings;
+    STUNSettings stunSettings;
+    ModeSettings modeSettings;
     QString systemProxyMode;
-    int bufferSize;
     bool trojanOn;
     bool serverLoadBalance;
-    bool shareOverLan;
-    bool enableIpv6Support;
     bool autoUpdateSubscribes;
-    bool hideWindowOnStartup;
-    bool startAtLogin;
-    bool onlyOneInstace;
-    bool checkPortAvailability;
-    bool enableNotification;
-    bool hideDockIcon;
     bool showToolbar;
     bool showFilterBar;
-    bool nativeMenuBar;
     QSettings *settings;
     QString configFile;
 

@@ -1,19 +1,21 @@
 #include "addresstester.h"
 #include "connection.h"
 #include "confighelper.h"
+#include "utils.h"
 #include "pachelper.h"
 #include "portvalidator.h"
 #include "privilegeshelper.h"
 #include "ssgoapi.h"
 #include "v2rayapi.h"
 #include "trojangoapi.h"
-#include "trojan-qt5-core.h"
+#include "Trojan-Qt5-Core.h"
 #include "SSRThread.hpp"
 #include "utils.h"
 #include "logger.h"
 #include "midman.h"
 
 #include <QCoreApplication>
+#include <QMessageBox>
 #include <QDir>
 #include <QHostInfo>
 #include <QHostAddress>
@@ -21,14 +23,7 @@
 Connection::Connection(QObject *parent) :
     QObject(parent),
     running(false)
-{
-#ifdef Q_OS_WIN
-    configFile = qApp->applicationDirPath() + "/config.ini";
-#else
-    QDir configDir = QDir::homePath() + "/.config/trojan-qt5";
-    configFile = configDir.absolutePath() + "/config.ini";
-#endif
-}
+{}
 
 Connection::Connection(const TQProfile &_profile, QObject *parent) :
     Connection(parent)
@@ -60,7 +55,11 @@ const QString& Connection::getName() const
 QByteArray Connection::getURI(QString type) const
 {
     QString uri = "";
-    if (type == "ss")
+    if (type == "socks5")
+        uri = profile.toSocks5Uri();
+    else if (type == "http")
+        uri = profile.toHttpUri();
+    else if (type == "ss")
         uri = profile.toSSUri();
     else if (type == "ssr")
         uri = profile.toSSRUri();
@@ -80,7 +79,7 @@ void Connection::setProfile(TQProfile p)
 
 bool Connection::isValid() const
 {
-    if (profile.serverAddress.isEmpty() || (profile.password.isEmpty() && profile.uuid.isEmpty())) {
+    if (profile.serverAddress.isEmpty() || ((profile.password.isEmpty() && profile.uuid.isEmpty()) && (profile.type != "socks5" && profile.type != "http"))) {
         return false;
     }
     else {
@@ -111,66 +110,86 @@ void Connection::start()
         latencyTest();
     }
 
-    ConfigHelper *conf = new ConfigHelper(configFile);
+    ConfigHelper *conf = Utils::getConfigHelper();
 
     //wait, let's check if port is in use
-    if (conf->isCheckPortAvailability()) {
+    if (conf->getGeneralSettings().checkPortAvailability) {
         PortValidator *pv = new PortValidator();
-        QString errorString = pv->isInUse(conf->getSocks5Port());
+        QString errorString = pv->isInUse(conf->getInboundSettings().socks5LocalPort);
         if (!errorString.isEmpty()) {
-            Logger::error(QString("[Connection] Can't bind socks5 port %1: %2").arg(QString::number(conf->getSocks5Port())).arg(errorString));
+            Logger::error(QString("[Connection] Can't bind socks5 port %1: %2").arg(QString::number(conf->getInboundSettings().socks5LocalPort)).arg(errorString));
+            QMessageBox::critical(NULL, tr("Unable to start connection"), QString(tr("Socks5 port %1 is already in use")).arg(conf->getInboundSettings().socks5LocalPort));
             return;
         }
 
         //don't check http mode if httpMode is not enabled
-        if (conf->isEnableHttpMode()) {
-            QString errorString = pv->isInUse(conf->getHttpPort());
+        if (conf->getInboundSettings().enableHttpMode) {
+            QString errorString = pv->isInUse(conf->getInboundSettings().httpLocalPort);
             if (!errorString.isEmpty()) {
-                Logger::error(QString("[Connection] Can't bind http port %1: %2").arg(QString::number(conf->getHttpPort())).arg(errorString));
+                Logger::error(QString("[Connection] Can't bind http port %1: %2").arg(QString::number(conf->getInboundSettings().httpLocalPort)).arg(errorString));
+                QMessageBox::critical(NULL, tr("Unable to start connection"), QString(tr("Http port %1 is already in use")).arg(conf->getInboundSettings().httpLocalPort));
                 return;
             }
         }
     }
 
-    if (conf->isEnableHttpMode())
-        http = new HttpProxy();
+    if (conf->getInboundSettings().enableHttpMode)
+        http = std::make_unique<HttpProxy>();
 
     if (conf->getSystemProxySettings() == "advance") {
         //initialize tun2socks and route table helper
-        tun2socks = new Tun2socksThread();
-        QString serverAddress = profile.serverAddress;
-        rhelper = new RouteTableHelper(serverAddress);
+        if (conf->getModeSettings().mode == 0) {
+            tun2socks = std::make_unique<Tun2socksThread>();
+            QString serverAddress = profile.serverAddress;
+            rhelper = std::make_unique<RouteTableHelper>(serverAddress);
+        } else if (conf->getModeSettings().mode == 1)
+            nfsdk2 = std::make_unique<NFSDK2Controller>();
+            nat = std::make_unique<NatTypeTesterController>();
+            connect(nat.get(), &NatTypeTesterController::natTypeFinished, this, &Connection::natTypeFinished);
     }
 
-#ifdef Q_OS_WIN
-    QString file = qApp->applicationDirPath() + "/config.json";
-#else
-    QDir configDir = QDir::homePath() + "/.config/trojan-qt5";
-    QString file = configDir.absolutePath() + "/config.json";
-#endif
+    QString file = Utils::getConfigPath() + "/config.json";
 
-    QString localAddr = conf->isEnableIpv6Support() ? (conf->isShareOverLan() ? "::" : "::1") : (conf->isShareOverLan() ? "0.0.0.0" : "127.0.0.1");
+    QString localAddr = conf->getInboundSettings().enableIpv6Support ? (conf->getInboundSettings().shareOverLan ? "::" : "::1") : (conf->getInboundSettings().shareOverLan ? "0.0.0.0" : "127.0.0.1");
 
-    if (profile.type == "ss") {
-        QString apiAddr = localAddr + ":" + QString::number(conf->getTrojanAPIPort());
-        QString clientAddr = localAddr + ":" + QString::number(conf->getSocks5Port());
+    if (profile.type == "socks5") {
+        conf->generateSocks5HttpJson("socks", profile);
+        testV2rayGo_return v2rayStatus = testV2rayGo(file.toStdString().data());
+        if (!v2rayStatus.r0) {
+            QMessageBox::critical(NULL, tr("Failed to start V2Ray"), v2rayStatus.r1);
+            emit startFailed();
+            return;
+        }
+        v2ray = std::make_unique<V2rayThread>(file);
+    } else if (profile.type == "http") {
+        conf->generateSocks5HttpJson("http", profile);
+        testV2rayGo_return v2rayStatus = testV2rayGo(file.toStdString().data());
+        if (!v2rayStatus.r0) {
+            QMessageBox::critical(NULL, tr("Failed to start V2Ray"), v2rayStatus.r1);
+            emit startFailed();
+            return;
+        }
+        v2ray = std::make_unique<V2rayThread>(file);
+    } else if (profile.type == "ss") {
+        QString apiAddr = localAddr + ":" + QString::number(conf->getCoreSettings().apiPort);
+        QString clientAddr = localAddr + ":" + QString::number(conf->getInboundSettings().socks5LocalPort);
         QString serverAddr = profile.serverAddress + ":" + QString::number(profile.serverPort);
-        ss = new SSThread(clientAddr.toUtf8().data(),
+        ss = std::make_unique<SSThread>(clientAddr.toUtf8().data(),
                           serverAddr.toUtf8().data(),
                           profile.method.toUtf8().data(),
                           profile.password.toUtf8().data(),
                           profile.plugin.toUtf8().data(),
                           profile.pluginParam.toUtf8().data(),
-                          conf->isEnableTrojanAPI(),
+                          conf->getCoreSettings().enableAPI,
                           apiAddr.toUtf8().data());
     } else if (profile.type == "ssr") {
         //initalize ssr thread
-        ssr = std::make_unique<SSRThread>(conf->getSocks5Port(),
+        ssr = std::make_unique<SSRThread>(conf->getInboundSettings().socks5LocalPort,
                           profile.serverPort,
                           6000,
                           1500,
                           SSRThread::SSR_WORK_MODE::TCP_AND_UDP,
-                          conf->isEnableIpv6Support() ? (conf->isShareOverLan() ? "::" : "::1") : (conf->isShareOverLan() ? "0.0.0.0" : "127.0.0.1"),
+                          conf->getInboundSettings().enableIpv6Support ? (conf->getInboundSettings().shareOverLan ? "::" : "::1") : (conf->getInboundSettings().shareOverLan ? "0.0.0.0" : "127.0.0.1"),
                           profile.serverAddress.toStdString(),
                           profile.method.toStdString(),
                           profile.password.toStdString(),
@@ -179,14 +198,22 @@ void Connection::start()
                           profile.protocol.toStdString(),
                           profile.protocolParam.toStdString());
         ssr->connect(ssr.get(), &SSRThread::OnDataReady, this, &Connection::onNewBytesTransmitted);
-        ssr->connect(ssr.get(), &SSRThread::onSSRThreadLog, this, &Connection::onLog);
     } else if (profile.type == "vmess") {
         conf->generateV2rayJson(profile);
-        v2ray = new V2rayThread(file);
+        setAssetPath(conf->getCoreSettings().geoPath.toUtf8().data());
+        testV2rayGo_return v2rayStatus = testV2rayGo(file.toStdString().data());
+        if (!v2rayStatus.r0) {
+            QMessageBox::critical(NULL, tr("Failed to start V2Ray"), v2rayStatus.r1);
+            emit startFailed();
+            return;
+        }
+        v2ray = std::make_unique<V2rayThread>(file);
     } else if (profile.type == "trojan") {
-        //generate Config File that trojan will use
-        conf->connectionToJson(profile);
-        trojan = new TrojanThread(file);
+        conf->generateTrojanJson(profile);
+        trojan = std::make_unique<TrojanThread>(file);
+    } else if (profile.type == "snell") {
+        conf->generateSnellJson(profile);
+        snell = std::make_unique<SnellThread>(file);
     }
 
     //set the file permission as well
@@ -197,27 +224,34 @@ void Connection::start()
 
     if (profile.type == "ss") {
         ss->start();
-        if (conf->isEnableTrojanAPI()) {
-            ssGoAPI = new SSGoAPI();
+        if (conf->getCoreSettings().enableAPI) {
+            ssGoAPI = std::make_unique<SSGoAPI>();
             ssGoAPI->start();
-            connect(ssGoAPI, &SSGoAPI::OnDataReady, this, &Connection::onNewBytesTransmitted);
+            connect(ssGoAPI.get(), &SSGoAPI::OnDataReady, this, &Connection::onNewBytesTransmitted);
         }
     } else if (profile.type == "ssr") {
         ssr->start();
-    } else if (profile.type == "vmess") {
-       v2ray->start();
-       if (conf->isEnableTrojanAPI()) {
-           v2rayAPI = new V2rayAPI();
-           v2rayAPI->start();
-           connect(v2rayAPI, &V2rayAPI::OnDataReady, this, &Connection::onNewBytesTransmitted);
-       }
+    } else if ((profile.type == "socks5" || profile.type == "http" ) || profile.type == "vmess") {
+        v2ray->start();
+        if (conf->getCoreSettings().enableAPI) {
+            v2rayAPI = std::make_unique<V2rayAPI>();
+            v2rayAPI->start();
+            connect(v2rayAPI.get(), &V2rayAPI::OnDataReady, this, &Connection::onNewV2RayBytesTransmitted);
+        }
     } else if (profile.type == "trojan") {
         trojan->start();
-        if (conf->isEnableTrojanAPI()) {
-            trojanGoAPI = new TrojanGoAPI();
+        if (conf->getCoreSettings().enableAPI) {
+            trojanGoAPI = std::make_unique<TrojanGoAPI>();
             trojanGoAPI->setPassword(profile.password);
             trojanGoAPI->start();
-            connect(trojanGoAPI, &TrojanGoAPI::OnDataReady, this, &Connection::onNewBytesTransmitted);
+            connect(trojanGoAPI.get(), &TrojanGoAPI::OnDataReady, this, &Connection::onNewBytesTransmitted);
+        }
+    } else if (profile.type == "snell") {
+        snell->start();
+        if (conf->getCoreSettings().enableAPI) {
+            snellGoAPI = std::make_unique<SnellGoAPI>();
+            snellGoAPI->start();
+            connect(snellGoAPI.get(), &SnellGoAPI::OnDataReady, this, &Connection::onNewBytesTransmitted);
         }
     }
 
@@ -225,19 +259,25 @@ void Connection::start()
     MidMan::setConnection(this);
 
     //start http proxy if settings is configured to do so
-    if (conf->isEnableHttpMode())
+    if (conf->getInboundSettings().enableHttpMode)
         if (conf->getSystemProxySettings() != "advance")
             http->httpListen(QHostAddress(localAddr),
-                           conf->getHttpPort(),
-                           localAddr,
-                           conf->getSocks5Port());
+                           conf->getInboundSettings().httpLocalPort,
+                           "127.0.0.1",
+                           conf->getInboundSettings().socks5LocalPort);
 
     //start tun2socks if settings is configured to do so
     if (conf->getSystemProxySettings() == "advance") {
         if (PrivilegesHelper::checkPrivileges()) {
-            tun2socks->start();
-            rhelper->set();
-           }
+            if (conf->getModeSettings().mode == 0) {
+                tun2socks->start();
+                rhelper->set();
+                nat->startTesting();
+            } else if (conf->getModeSettings().mode == 1) {
+                nfsdk2->start();
+                nat->startTesting();
+            }
+        }
         else {
             PrivilegesHelper::showWarning();
             onStartFailed();
@@ -258,11 +298,14 @@ void Connection::start()
         SystemProxyHelper::setSystemProxy(2);
     else if (conf->getSystemProxySettings() == "global")
         SystemProxyHelper::setSystemProxy(1);
+
+    delete conf;
+    conf = nullptr;
 }
 
 void Connection::stop()
 {
-    ConfigHelper *conf = new ConfigHelper(configFile);
+    ConfigHelper *conf = Utils::getConfigHelper();
 
     if (running) {
         //set the running status to false first.
@@ -270,72 +313,91 @@ void Connection::stop()
 
         if (profile.type == "ss") {
             ss->stop();
-            if (ssGoAPI && conf->isEnableTrojanAPI()) {
+            if (ssGoAPI && conf->getCoreSettings().enableAPI) {
                 ssGoAPI->stop();
             }
         } else if (profile.type == "ssr") {
             ssr->stop();
-        } else if (profile.type == "vmess") {
+        } else if ((profile.type == "socks5" || profile.type == "http" ) || profile.type == "vmess") {
             v2ray->stop();
-            if (v2rayAPI && conf->isEnableTrojanAPI()) {
+            if (v2rayAPI && conf->getCoreSettings().enableAPI) {
                 v2rayAPI->stop();
             }
         } else if (profile.type == "trojan") {
             trojan->stop();
-            if (trojanGoAPI && conf->isEnableTrojanAPI()) {
+            if (trojanGoAPI && conf->getCoreSettings().enableAPI) {
                 trojanGoAPI->stop();
+            }
+        } else if (profile.type == "snell") {
+            snell->stop();
+            if (snellGoAPI && conf->getCoreSettings().enableAPI) {
+                snellGoAPI->stop();
             }
         }
 
         //if we have started http proxy, stop it
-        if (http && conf->isEnableHttpMode()) {
-            http->close();
+        if (http && conf->getInboundSettings().enableHttpMode) {
+            http->httpClose();
         }
 
         conf->setTrojanOn(running);
 
         emit stateChanged(running);
 
-        if (tun2socks && conf->getSystemProxySettings() == "advance") {
-            tun2socks->stop();
-            rhelper->reset();
-        } else if (conf->getSystemProxySettings() != "direct") {
+        if (conf->getSystemProxySettings() == "advance") {
+            if (tun2socks && conf->getModeSettings().mode == 0) {
+                tun2socks->stop();
+                if (rhelper)
+                    rhelper->reset();
+            } else if (nfsdk2 && conf->getModeSettings().mode == 1)
+                nfsdk2->stop();
+        }
+
+        if (conf->getSystemProxySettings() != "direct" && conf->getSystemProxySettings() != "advance") {
             //set proxy settings after emit the signal
             SystemProxyHelper::setSystemProxy(0);
         }
     }
+
+    delete conf;
+    conf = nullptr;
 }
 
 void Connection::onStartFailed()
 {
-    ConfigHelper *conf = new ConfigHelper(configFile);
+    ConfigHelper *conf = Utils::getConfigHelper();
 
     running = false;
 
     conf->setTrojanOn(running);
 
+    //if we have started http proxy, stop it
+    if (conf->getInboundSettings().enableHttpMode) {
+        http->close();
+    }
+
     if (profile.type == "ss") {
         ss->stop();
-        if (ssGoAPI && conf->isEnableTrojanAPI()) {
+        if (ssGoAPI && conf->getCoreSettings().enableAPI) {
             ssGoAPI->stop();
         }
     } else if (profile.type == "ssr") {
         ssr->stop();
-    } else if (profile.type == "vmess") {
+    } else if ((profile.type == "socks5" || profile.type == "http" ) || profile.type == "vmess") {
         v2ray->stop();
-        if (v2rayAPI && conf->isEnableTrojanAPI()) {
+        if (v2rayAPI && conf->getCoreSettings().enableAPI) {
             v2rayAPI->stop();
         }
     } else if (profile.type == "trojan") {
         trojan->stop();
-        if (trojanGoAPI && conf->isEnableTrojanAPI()) {
+        if (trojanGoAPI && conf->getCoreSettings().enableAPI) {
             trojanGoAPI->stop();
         }
-    }
-
-    //if we have started http proxy, stop it
-    if (conf->isEnableHttpMode()) {
-        http->close();
+    } else if (profile.type == "snell") {
+        snell->stop();
+        if (snellGoAPI && conf->getCoreSettings().enableAPI) {
+            snellGoAPI->stop();
+        }
     }
 
     emit stateChanged(running);
@@ -345,6 +407,9 @@ void Connection::onStartFailed()
     if (conf->getSystemProxySettings() != "direct" && conf->getSystemProxySettings() != "advance") {
         SystemProxyHelper::setSystemProxy(0);
     }
+
+    delete conf;
+    conf = nullptr;
 }
 
 void Connection::onNotifyConnectionChanged()
@@ -366,10 +431,24 @@ void Connection::onTrojanConnectionDestoryed(Connection& connection, const uint6
 
 void Connection::onNewBytesTransmitted(const quint64 &u, const quint64 &d)
 {
-    profile.currentUsage += u + d;
-    profile.totalUsage += u + d;
-    emit dataUsageChanged(profile.currentUsage, profile.totalUsage);
-    emit dataTrafficAvailable(u, d);
+    profile.currentDownloadUsage += d;
+    profile.currentUploadUsage += u;
+    profile.totalDownloadUsage += d;
+    profile.totalUploadUsage += u;
+    emit dataUsageChanged(profile.currentDownloadUsage + profile.currentUploadUsage, profile.totalDownloadUsage + profile.totalUploadUsage);
+    QList<quint64> data({u, d, 0, 0});
+    emit dataTrafficAvailable(data);
+}
+
+void Connection::onNewV2RayBytesTransmitted(const quint64 &pu, const quint64 &pd, const quint64 &du, const quint64 &dd)
+{
+    profile.currentDownloadUsage += pd;
+    profile.currentUploadUsage += pu;
+    profile.totalDownloadUsage += pd;
+    profile.totalUploadUsage += pu;
+    emit dataUsageChanged(profile.currentDownloadUsage + profile.currentUploadUsage, profile.totalDownloadUsage + profile.totalUploadUsage);
+    QList<quint64> data({pu, pd, du, dd});
+    emit dataTrafficAvailable(data);
 }
 
 void Connection::onServerAddressLookedUp(const QHostInfo &host)
@@ -385,9 +464,4 @@ void Connection::onLatencyAvailable(const int latency)
 {
     profile.latency = latency;
     emit latencyAvailable(latency);
-}
-
-void Connection::onLog(QString string)
-{
-    qDebug() << string;
 }

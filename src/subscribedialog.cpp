@@ -1,4 +1,4 @@
-/**
+﻿/**
   * @brief Subscribe Dialog
   * @ref https://github.com/shadowsocksrr/shadowsocksr-csharp/blob/master/shadowsocks-csharp/View/SubscribeForm.cs
   *
@@ -18,6 +18,9 @@ SubscribeDialog::SubscribeDialog(ConfigHelper *ch, QWidget *parent) :
     connect(ui->confirmButton, &QPushButton::clicked, this, &SubscribeDialog::onAccepted);
     connect(ui->listView, SIGNAL(clicked(QModelIndex)), this, SLOT(onClicked(QModelIndex)));
 
+    // reset text
+    ui->cancelButton->setText("Cancel");
+
     ItemModel = new QStandardItemModel(this);
     subscribes = helper->readSubscribes();
 
@@ -29,10 +32,12 @@ SubscribeDialog::SubscribeDialog(ConfigHelper *ch, QWidget *parent) :
     if (subscribes.size() == 0)
     {
         ui->urlLineEdit->setDisabled(true);
+        ui->groupNameLineEdit->setDisabled(true);
     }
     else
     {
         ui->urlLineEdit->setEnabled(true);
+        ui->groupNameLineEdit->setEnabled(true);
     }
 
     ui->autoUpdateCheckBox->setChecked(helper->isAutoUpdateSubscribes());
@@ -82,7 +87,7 @@ void SubscribeDialog::UpdateSelected(int index)
         ui->urlLineEdit->setText(sb.url);
         ui->groupNameLineEdit->setText(sb.groupName);
         _old_select_index = index;
-        if (sb.lastUpdateTime != 0 )
+        if (sb.lastUpdateTime != 0)
         {
             QDateTime now;
             now.setTime_t(sb.lastUpdateTime + QDateTime::fromString("1970-01-01T00:00:00").toTime_t());
@@ -90,7 +95,7 @@ void SubscribeDialog::UpdateSelected(int index)
         }
         else
         {
-            ui->recentUpdateLineEdit->setText("(｢･ω･)｢");
+            ui->recentUpdateLineEdit->setText(u8"(｢･ω･)｢");
         }
     }
 
@@ -100,12 +105,15 @@ void SubscribeDialog::SaveSelected(int index)
 {
     if (index >= 0 && index < subscribes.size())
     {
-        TQSubscribe sb;
+        TQSubscribe sb = subscribes[index];
         if (sb.url != ui->urlLineEdit->text())
         {
             sb.url = ui->urlLineEdit->text();
             sb.groupName = ui->groupNameLineEdit->text();
             sb.lastUpdateTime = 0;
+        } else if (sb.groupName != ui->groupNameLineEdit->text())
+        {
+            sb.groupName = ui->groupNameLineEdit->text();
         }
         subscribes[index] = sb;
     }
@@ -128,6 +136,7 @@ void SubscribeDialog::onAdd()
     SetSelectIndex(select_index);
 
     ui->urlLineEdit->setEnabled(true);
+    ui->groupNameLineEdit->setEnabled(true);
 }
 
 void SubscribeDialog::onDelete()
@@ -147,6 +156,7 @@ void SubscribeDialog::onDelete()
     if (subscribes.size() == 0)
     {
         ui->urlLineEdit->setDisabled(true);
+        ui->groupNameLineEdit->setDisabled(true);
     }
 }
 

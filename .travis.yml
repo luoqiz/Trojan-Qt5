@@ -81,6 +81,8 @@ before_script:
 script:
   - git submodule update --init --recursive
   - cd 3rd/trojan-qt5-core
+  - go env -w GOPROXY=direct
+  - go env -w GOSUMDB=off
   - go build --tags "api client router" -buildmode=c-archive
   - cd ../..
   - if [ "$BADGE" = "osx" ]; then
@@ -104,17 +106,15 @@ script:
       export LD_LIBRARY_PATH=/usr/loal/zlib/lib:/usr/local/pcre/lib:/usr/local/zbar/lib/:/usr/local/qrencode/lib/:/usr/local/boost/lib/:/usr/local/openssl/lib/:$LD_LIBRARY_PATH;
       ./linuxdeployqt-continuous-x86_64.AppImage appdir/usr/share/applications/*.desktop -appimage;
       mv Trojan-Qt5*.AppImage Trojan-Qt5-Linux.AppImage;
-      curl -LO https://github.com/Trojan-Qt5/Trojan-Qt5/raw/master/resources/dat/geosite.dat;
-      curl -LO https://github.com/Trojan-Qt5/Trojan-Qt5/raw/master/resources/dat/geoip.dat;
-      7z a Trojan-Qt5-Linux.7z Trojan-Qt5-Linux.AppImage geosite.dat geoip.dat;
+      7z a Trojan-Qt5-Linux.7z Trojan-Qt5-Linux.AppImage;
       python3 ../scripts/checksum.py Trojan-Qt5-Linux.7z Trojan-Qt5-Linux.hash;
     fi
   - if [ "$BADGE" = "linux" ] && [ "$ROLE" = "deb" ]; then
       sudo dpkg-buildpackage -us -uc -i -b;
-      mv ../trojan-qt5_*.deb Trojan-Qt5-deb.deb;
-      python3 ./scripts/checksum.py Trojan-Qt5-deb.deb Trojan-Qt5-deb.hash;
+      mv ../trojan-qt5_*.deb Trojan-Qt5-Deb.deb;
+      python3 ./scripts/checksum.py Trojan-Qt5-Deb.deb Trojan-Qt5-Deb.hash;
       mkdir build && cd build;
-      mv ../Trojan-Qt5-deb.deb . && mv ../Trojan-Qt5-deb.hash .;
+      mv ../Trojan-Qt5-Deb.deb . && mv ../Trojan-Qt5-Deb.hash .;
     fi
 
 defore_deploy:
@@ -127,8 +127,8 @@ deploy:
     - build/Trojan-Qt5-macOS.hash
     - build/Trojan-Qt5-Linux.7z
     - build/Trojan-Qt5-Linux.hash
-    - build/Trojan-Qt5-deb.deb
-    - build/Trojan-Qt5-deb.hash
+    - build/Trojan-Qt5-Deb.deb
+    - build/Trojan-Qt5-Deb.hash
   api_key: $GIT_REPO_TOKEN
   skip_cleanup: true
   overwrite: true

@@ -23,19 +23,24 @@
 #include <QHostInfo>
 #include <QHostAddress>
 #include <memory>
+
 #include "httpproxy.h"
 #include "pachelper.h"
 #include "ssthread.h"
 #include "SSRThread.hpp"
 #include "tun2socksthread.h"
+#include "nfsdk2controller.h"
+#include "nattypetestercontroller.h"
 #include "v2raythread.h"
 #include "trojanthread.h"
+#include "snellthread.h"
 #include "systemproxyhelper.h"
 #include "tqprofile.h"
 #include "routetablehelper.h"
 #include "ssgoapi.h"
 #include "v2rayapi.h"
 #include "trojangoapi.h"
+#include "snellgoapi.h"
 
 class Connection : public QObject
 {
@@ -63,7 +68,8 @@ signals:
     void latencyAvailable(const int);
     void newLogAvailable(const QString &);
     void dataUsageChanged(const quint64 &current, const quint64 &total);
-    void dataTrafficAvailable(const quint64 &up, const quint64 &down);
+    void dataTrafficAvailable(const QList<quint64> data);
+    void natTypeFinished(const QString &);
     void startFailed();
     void connectionChanged();
     void connectionSwitched();
@@ -74,31 +80,38 @@ public slots:
     void stop();
     void onStartFailed();
     void onNotifyConnectionChanged();
-    void onLog(QString string);
 
 private:
-    QString configFile;
-    HttpProxy *http;
-    SSThread *ss;
+    std::unique_ptr<HttpProxy> http;
+    std::unique_ptr<SSThread> ss;
     std::unique_ptr<SSRThread> ssr;
-    Tun2socksThread *tun2socks;
-    V2rayThread *v2ray;
-    TrojanThread *trojan;
-    RouteTableHelper *rhelper;
-    SSGoAPI *ssGoAPI;
-    V2rayAPI *v2rayAPI;
-    TrojanGoAPI *trojanGoAPI;
+    std::unique_ptr<V2rayThread> v2ray;
+    std::unique_ptr<TrojanThread> trojan;
+    std::unique_ptr<SnellThread> snell;
+
+    std::unique_ptr<RouteTableHelper> rhelper;
+    std::unique_ptr<Tun2socksThread> tun2socks;
+    std::unique_ptr<NFSDK2Controller> nfsdk2;
+    std::unique_ptr<NatTypeTesterController> nat;
+
+    std::unique_ptr<SSGoAPI> ssGoAPI;
+    std::unique_ptr<V2rayAPI> v2rayAPI;
+    std::unique_ptr<TrojanGoAPI> trojanGoAPI;
+    std::unique_ptr<SnellGoAPI> snellGoAPI;
 
     TQProfile profile;
     bool running;
 
     void testAddressLatency(const QHostAddress &addr);
 
+    friend class Socks5EditDialog;
+    friend class HttpEditDialog;
     friend class SSEditDialog;
     friend class SSREditDialog;
     friend class VmessEditDialog;
     friend class TrojanEditDialog;
     friend class SnellEditDialog;
+    friend class NaiveProxyEditDialog;
     friend class ConfigHelper;
     friend class StatusDialog;
     friend class ConnectionItem;
@@ -107,6 +120,7 @@ private slots:
     void onServerAddressLookedUp(const QHostInfo &host);
     void onLatencyAvailable(const int);
     void onNewBytesTransmitted(const quint64 &, const quint64 &);
+    void onNewV2RayBytesTransmitted(const quint64 &pu, const quint64 &pd, const quint64 &du, const quint64 &dd);
 
 };
 Q_DECLARE_METATYPE(Connection*)

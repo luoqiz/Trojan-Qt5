@@ -21,7 +21,9 @@ install:
   - cd ..\..
   - cd 3rd\trojan-qt5-core
   - set GOARCH=386
-  - go build --tags "api client router" -buildmode=c-shared -o trojan-qt5-core.dll main.go
+  - go env -w GOPROXY=direct
+  - go env -w GOSUMDB=off
+  - go build --tags "api client router" -buildmode=c-shared -o Trojan-Qt5-Core.dll main.go
   - process.bat
   - python msvc.py
   - cd ../..
@@ -35,7 +37,7 @@ build_script:
   - nmake
   - cd release
   - windeployqt trojan-qt5.exe
-  - del *.o *.h *.cpp *.stash *.qrc *.obj Makefile
+  - del *.o *.h *.cpp *.stash *.qrc *.obj *.opt Makefile
   - curl -LO https://github.com/Trojan-Qt5/Trojan-Qt5-Scripts/raw/master/move.py
   - python move.py
   - curl -LO https://github.com/Trojan-Qt5/Trojan-Qt5-DLL/raw/master/libiconv-2.dll
@@ -47,12 +49,19 @@ build_script:
   - curl -LO https://github.com/Trojan-Qt5/Trojan-Qt5-DLL/raw/master/libprotobuf.dll
   - curl -LO https://github.com/Trojan-Qt5/Trojan-Qt5-DLL/raw/master/libgcc_s_dw2-1.dll
   - curl -LO https://github.com/Trojan-Qt5/Trojan-Qt5-DLL/raw/master/zlib1.dll
-  - curl -LO https://github.com/Trojan-Qt5/Trojan-Qt5/raw/master/resources/dat/geosite.dat
-  - curl -LO https://github.com/Trojan-Qt5/Trojan-Qt5/raw/master/resources/dat/geoip.dat
-  - del /f /s /q vc_redist.x86.exe opengl32sw.dll d3dcompiler_47.dll libGLESV2.dll libEGL.dll Qt5Svg.dll move.py imageformats\qgif.dll iconengines\qsvgicon.dll imageformats\qtga.dll imageformats\qtiff.dll imageformats\qwbmp.dll imageformats\qwebp.dll imageformats\qjpeg.dll imageformats\qsvg.dll iconengines bearer
-  - rmdir iconengines bearer
+  - curl -LO https://github.com/Trojan-Qt5/Trojan-Qt5-DLL/raw/master/Trojan-Qt5-Route.dll
+  - del /f /s /q qtcolorpicker.moc trojan-qt5.exp trojan-qt5.lib trojan-qt5_resource.res vc_redist.x86.exe opengl32sw.dll d3dcompiler_47.dll libGLESV2.dll libEGL.dll move.py imageformats\qgif.dll imageformats\qtga.dll imageformats\qtiff.dll imageformats\qwbmp.dll imageformats\qwebp.dll bearer
+  - rmdir bearer
   - 7z a Trojan-Qt5-Windows.7z *
-  - python ..\..\scripts\checksum.py Trojan-Qt5-Windows.7z Trojan-Qt5-Windows.hash
+  - 7z a Trojan-Qt5-Windows.zip * -xr!*.7z
+  - curl -LO https://github.com/Trojan-Qt5/Trojan-Qt5/raw/master/LICENSE
+  - curl -LO https://github.com/Trojan-Qt5/Trojan-Qt5/raw/master/resources/installer.nsi
+  - set NSISDIR=C:\Program Files (x86)\NSIS
+  - set PATH=%NSISDIR%;%PATH%;
+  - makensis installer.nsi
+  - python ..\..\scripts\checksum.py Trojan-Qt5-Windows.7z Trojan-Qt5-Windows.7z.hash
+  - python ..\..\scripts\checksum.py Trojan-Qt5-Windows.zip Trojan-Qt5-Windows.zip.hash
+  - python ..\..\scripts\checksum.py Trojan-Qt5-Windows.exe Trojan-Qt5-Windows.exe.hash
   - cd ..
   - cd ..
 
@@ -64,7 +73,7 @@ deploy:
   provider: GitHub
   description: "Trojan-Qt5 Release"
   auth_token:
-    secure: irJpr7f61rftnluing6Rqm7Q5Lxmk48O48F5t9/3KjaoMsIUh2lUb8SmXQmhkHY9
+    secure: tCne2EbTzTpOYeqGO6ngzToxUTYLbxsEA+fNskPfK7fdj1sqy3YrdR+P1XwdDBKf
   artifact: Trojan-Qt5
   draft: false
   prerelease: false

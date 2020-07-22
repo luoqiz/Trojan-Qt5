@@ -46,6 +46,12 @@ bool HttpProxy::httpListen(const QHostAddress &http_addr,
     return this->listen(http_addr, http_port);
 }
 
+void HttpProxy::httpClose()
+{
+    this->close();
+    emit closeAllSocket();
+}
+
 void HttpProxy::incomingConnection(qintptr socketDescriptor)
 {
     QTcpSocket *socket = new QTcpSocket(this);
@@ -58,14 +64,16 @@ void HttpProxy::incomingConnection(qintptr socketDescriptor)
             (&QTcpSocket::error),
             this,
             &HttpProxy::onSocketError);
+    connect(this, &HttpProxy::closeAllSocket,
+            socket, &QTcpSocket::close);
     socket->setSocketDescriptor(socketDescriptor);
 }
 
 void HttpProxy::onSocketError(QAbstractSocket::SocketError err)
 {
     if (err != QAbstractSocket::RemoteHostClosedError) {
-        QDebug(QtMsgType::QtWarningMsg) << "HTTP socket error: "
-                                        << err;
+        /* QDebug(QtMsgType::QtWarningMsg) << "HTTP socket error: "
+                                        << err; */
     }
     sender()->deleteLater();
 }
@@ -92,7 +100,7 @@ void HttpProxy::onSocketReadyRead()
     if (method != "CONNECT") {
         QUrl url = QUrl::fromEncoded(address);
         if (!url.isValid()) {
-            QDebug(QtMsgType::QtCriticalMsg) << "Invalid URL: " << url;
+            // QDebug(QtMsgType::QtCriticalMsg) << "Invalid URL: " << url;
             socket->disconnectFromHost();
             return;
         }
@@ -140,6 +148,8 @@ void HttpProxy::onSocketReadyRead()
              (&QTcpSocket::error),
              this,
              &HttpProxy::onSocketError);
+    connect(this, &HttpProxy::closeAllSocket,
+            proxySocket, &QTcpSocket::close);
     proxySocket->connectToHost(host, port);
 }
 
@@ -166,6 +176,10 @@ void HttpProxy::onProxySocketConnectedHttps()
             stream, &SocketStream::deleteLater);
     connect(proxySocket, &QTcpSocket::disconnected,
             stream, &SocketStream::deleteLater);
+    connect(this, &HttpProxy::closeAllSocket,
+            socket, &QTcpSocket::close);
+    connect(this, &HttpProxy::closeAllSocket,
+            proxySocket, &QTcpSocket::close);
     static const QByteArray httpsHeader =
             "HTTP/1.0 200 Connection established\r\n\r\n";
     socket->write(httpsHeader);

@@ -27,12 +27,12 @@ QString SubscribeManager::checkUpdate(QString url)
     QNetworkRequest request(url);
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
     request.setAttribute(QNetworkRequest::HTTP2AllowedAttribute, true);
-    request.setRawHeader("User-Agent", helper->getUpdateUserAgent().toUtf8().data());
+    request.setRawHeader("User-Agent", helper->getSubscribeSettings().updateUserAgent.toUtf8().data());
     if (useProxy) {
         QNetworkProxy proxy;
         proxy.setType(QNetworkProxy::Socks5Proxy);
         proxy.setHostName("127.0.0.1");
-        proxy.setPort(helper->getSocks5Port());
+        proxy.setPort(helper->getInboundSettings().socks5LocalPort);
         manager->setProxy(proxy);
     }
     QNetworkReply* reply = manager->get(request);
@@ -50,7 +50,7 @@ void SubscribeManager::updateAllSubscribesWithThread()
 
 void SubscribeManager::updateAllSubscribes()
 {
-    Logger::debug(QString("[Subscribe] Check subscribe clicked, use proxy: %1").arg(useProxy));
+    Logger::debug(QString("[Subscribe] Check subscribe clicked, use proxy: %1").arg(useProxy ? "true" : "false"));
     QList<TQSubscribe> subscribes = helper->readSubscribes();
     for (int i = 0; i < subscribes.size(); i++) {
         subscribes[i].lastUpdateTime = QDateTime::currentDateTime().toTime_t() - QDateTime::fromString("1970-01-01T00:00:00").toTime_t();
@@ -66,23 +66,35 @@ void SubscribeManager::updateAllSubscribes()
             if (list[x].isEmpty()) {
                 continue;
             }
-            if (GeneralValidator::validateSS(list[x]) || GeneralValidator::validateSSR(list[x]) || GeneralValidator::validateVmess(list[x]) || GeneralValidator::validateTrojan(list[x])) {
-                if (!isFiltered(TQProfile(list[x]).name) && (x < helper->getMaximumSubscribe() || helper->getMaximumSubscribe() == 0)) {
-                    emit addUri(list[x]);
+            if (GeneralValidator::validateAll(list[x])) {
+                TQProfile profile = TQProfile(list[x]);
+                if (!isFiltered(profile.name) && (x < helper->getSubscribeSettings().maximumSubscribe || helper->getSubscribeSettings().maximumSubscribe == 0)) {
+                    if (helper->getSubscribeSettings().overwriteAllowInsecure) {
+                        profile.vmessSettings.tls.allowInsecure = true;
+                     }
+                    if (helper->getSubscribeSettings().overwriteAllowInsecureCiphers) {
+                        profile.vmessSettings.tls.allowInsecureCiphers = true;
+                    }
+                    if (helper->getSubscribeSettings().overwriteTcpFastOpen) {
+                        profile.tcpFastOpen = true;
+                    }
+                    emit addUri(profile);
                 }
             }
             else {
                 Logger::debug(QString("[Subscribe] Server %1 is not valid").arg(list[x]));
             }
         }
-        subscribes[i].groupName = TQProfile(list[0]).group;
+        if (helper->getSubscribeSettings().autoFetchGroupName)
+            if (!TQProfile(list[0]).group.isEmpty())
+                subscribes[i].groupName = TQProfile(list[0]).group;
     }
     helper->saveSubscribes(subscribes);
 }
 
 bool SubscribeManager::isFiltered(QString name)
 {
-    QStringList keywords = helper->getFilterKeyword().split(",");
+    QStringList keywords = helper->getSubscribeSettings().filterKeyword.split(",");
     if (keywords.size() == 1 && keywords[0] == "")
         return false;
 

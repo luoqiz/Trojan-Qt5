@@ -25,16 +25,25 @@
 #include <QUrl>
 #include <QJsonObject>
 
+#include "v2raystruct.h"
+#include "trojangostruct.h"
+
 struct TQProfile
 {
     TQProfile();
     TQProfile(const QString &uri);
 
+    TQProfile fromSocks5Uri(const std::string& socks5Uri) const;
+    TQProfile fromHttpUri(const std::string& httpUri) const;
     TQProfile fromSSUri(const std::string& ssUri) const;
     TQProfile fromOldSSUri(const std::string& ssUri) const;
     TQProfile fromSSRUri(const std::string& trojanUri) const;
     TQProfile fromVmessUri(const std::string& vmessUri) const;
     TQProfile fromTrojanUri(const std::string& trojanUri) const;
+    TQProfile fromSnellUri(const std::string& snellUri) const;
+
+    QString toSocks5Uri() const;
+    QString toHttpUri() const;
     QString toSSUri() const;
     QString toSSRUri() const;
     QString toVmessUri() const;
@@ -50,13 +59,16 @@ struct TQProfile
     QString name;
     QString serverAddress;
     QString password;
+    bool tcpFastOpen;
     int latency;
-    quint64 currentUsage;
-    quint64 totalUsage;
+    quint64 currentDownloadUsage;
+    quint64 currentUploadUsage;
+    quint64 totalDownloadUsage;
+    quint64 totalUploadUsage;
     QDateTime lastTime; //last time this connection is used
     QDate nextResetDate; //next scheduled date to reset data usage
-    bool mux;
-    int muxConcurrency;
+    // socks5/http only
+    QString username;
     // ss/ssr/snell only
     QString method;
     QString protocol;
@@ -66,23 +78,16 @@ struct TQProfile
     QString plugin;
     QString pluginParam;
     // trojan only
-    bool verifyCertificate;
-    bool verifyHostname;
+    QString sni;
     bool reuseSession;
     bool sessionTicket;
-    bool reusePort;
-    bool tcpFastOpen;
-    bool websocket;
-    bool websocketDoubleTLS;
-    QString sni;
-    QString websocketPath;
-    QString websocketHostname;
-    QString websocketObfsPassword;
+    TrojanGoSettings trojanGoSettings;
     // vmess only
     QString uuid;
     int alterID;
     QString security;
-    QJsonObject vmessSettings;
+    QString testsEnabled;
+    VmessSettings vmessSettings;
 
     static const int LATENCY_TIMEOUT = -1;
     static const int LATENCY_ERROR = -2;

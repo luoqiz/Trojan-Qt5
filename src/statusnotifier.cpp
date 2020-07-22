@@ -11,6 +11,7 @@
 #include <QClipboard>
 #include <QColor>
 #include <QDesktopServices>
+#include <QMap>
 #ifdef Q_OS_LINUX
 #include <QDBusMessage>
 #include <QDBusConnection>
@@ -36,7 +37,7 @@ StatusNotifier::StatusNotifier(MainWindow *w, ConfigHelper *ch, SubscribeManager
             window->raise();
         }
     });
-    minimiseRestoreAction = new QAction(helper->isHideWindowOnStartup() ? tr("Restore") : tr("Minimise"), this);
+    minimiseRestoreAction = new QAction(helper->getGeneralSettings().hideWindowOnStartup ? tr("Restore") : tr("Minimise"), this);
     connect(minimiseRestoreAction, &QAction::triggered, this, &StatusNotifier::activate);
     initActions();
     initConnections();
@@ -128,11 +129,18 @@ void StatusNotifier::initActions()
     serverLoadBalance->setCheckable(true);
 
     serverSpeedPlot = new QAction(tr("Server Speed Plot"));
-    copyTerminalProxyCommand = new QAction(tr("Copy terminal proxy command"));
+    copyTerminalProxyCommandMenu = new QMenu(tr("Copy terminal proxy command"));
     setProxyToTelegram = new QAction(tr("Set Proxy to Telegram"));
 #if defined (Q_OS_WIN)
-    installTapDriver = new QAction(tr("Instal TAP Driver"));
+    installTapDriver = new QAction(tr("Install TAP Driver"));
+    enableUWPLoopback = new QAction(tr("Enable UWP Loopback"));
 #endif
+
+    terminalWinStyle = new QAction(tr("Copy as Windows Style"));
+    terminalUnixStyle = new QAction(tr("Copy as Unix Style"));
+
+    copyTerminalProxyCommandMenu->addAction(terminalWinStyle);
+    copyTerminalProxyCommandMenu->addAction(terminalUnixStyle);
 
     //setup systray Menu
     systrayMenu.addAction(trojanQt5Action);
@@ -143,13 +151,13 @@ void StatusNotifier::initActions()
     systrayMenu.addSeparator();
     systrayMenu.addMenu(serverMenu);
     systrayMenu.addMenu(subscribeMenu);
-    systrayMenu.addAction(serverLoadBalance);
-    systrayMenu.addSeparator();
     systrayMenu.addAction(serverSpeedPlot);
-    systrayMenu.addAction(copyTerminalProxyCommand);
+    systrayMenu.addSeparator();
+    systrayMenu.addMenu(copyTerminalProxyCommandMenu);
     systrayMenu.addAction(setProxyToTelegram);
 #if defined (Q_OS_WIN)
     systrayMenu.addAction(installTapDriver);
+    systrayMenu.addAction(enableUWPLoopback);
 #endif
     systrayMenu.addSeparator();
 
@@ -178,10 +186,12 @@ void StatusNotifier::initConnections()
     connect(updateSubscribe, &QAction::triggered, this, &StatusNotifier::onUpdateSubscribeWithProxy);
     connect(updateSubscribeBypass, &QAction::triggered, this, &StatusNotifier::onUpdateSubscribe);
     connect(serverSpeedPlot, &QAction::triggered, this, [this]() { showServerSpeedPlot(); });
-    connect(copyTerminalProxyCommand, &QAction::triggered, this, [this]() { onCopyTerminalProxy(); });
+    connect(terminalWinStyle, &QAction::triggered, this, [this]() { onCopyTerminalProxy("windows"); });
+    connect(terminalUnixStyle, &QAction::triggered, this, [this]() { onCopyTerminalProxy("unix"); });
     connect(setProxyToTelegram, &QAction::triggered, this, [this]() { onSetProxyToTelegram(); });
 #if defined (Q_OS_WIN)
     connect(installTapDriver, &QAction::triggered, this, [this]() { onInstallTAPDriver(); });
+    connect(enableUWPLoopback, &QAction::triggered, this, [this]() { onEnableUWPLoopback(); });
 #endif
 }
 
@@ -202,18 +212,39 @@ void StatusNotifier::updateMenu()
 void StatusNotifier::updateServersMenu()
 {
     QList<TQProfile> serverList = window->getAllServers();
-    TQProfile actived = window->getSelectedServer();
+    TQProfile connected = window->getConnectedServer();
+    QMap<QString, QMenu*> groups;
+    QList<QAction*> pendingList;
+
     serverMenu->clear();
     serverMenu->addMenu(addServerMenu);
     serverMenu->addSeparator();
+
     for (int i=0; i<serverList.size(); i++) {
-        QAction *action = new QAction(serverList[i].name, ServerGroup);
-        action->setCheckable(false);
-        action->setIcon(QIcon(QString(":/icons/icons/%1_off.png").arg(serverList[i].type)));
-        if (serverList[i].equals(actived))
-            action->setIcon(QIcon(QString(":/icons/icons/%1_on.png").arg(serverList[i].type)));
-        serverMenu->addAction(action);
+        if (i < helper->getGeneralSettings().systemTrayMaximumServer || helper->getGeneralSettings().systemTrayMaximumServer == 0) {
+            if (groups.find(serverList[i].group) == groups.end() && !serverList[i].group.isEmpty())
+                groups[serverList[i].group] = new QMenu(serverList[i].group);
+
+            QAction *action = new QAction(serverList[i].name, ServerGroup);
+            action->setCheckable(false);
+            action->setIcon(QIcon(QString(":/icons/icons/%1_off.png").arg(serverList[i].type)));
+            if (serverList[i].equals(connected))
+                action->setIcon(QIcon(QString(":/icons/icons/%1_on.png").arg(serverList[i].type)));
+
+            if (!serverList[i].group.isEmpty())
+                groups[serverList[i].group]->addAction(action);
+            else
+                pendingList.append(action);
+        } else {
+            break;
+        }
     }
+
+    // add all menus and actions
+    for (QMenu *menu : groups)
+        serverMenu->addMenu(menu);
+    for (QAction *action : pendingList)
+        serverMenu->addAction(action);
 }
 
 void StatusNotifier::onToggleMode(QAction *action)
@@ -290,24 +321,35 @@ void StatusNotifier::onToggleServerLoadBalance(bool checked)
     changeIcon(helper->isTrojanOn());
 }
 
-void StatusNotifier::onCopyTerminalProxy()
+void StatusNotifier::onCopyTerminalProxy(QString type)
 {
     QClipboard *board = QApplication::clipboard();
-    if (helper->isEnableHttpMode())
-        board->setText(QString("export HTTP_PROXY=http://127.0.0.1:%1; export HTTPS_PROXY=http://127.0.0.1:%1; export ALL_PROXY=socks5://127.0.0.1:%2").arg(helper->getHttpPort()).arg(helper->getSocks5Port()));
+    if (helper->getInboundSettings().enableHttpMode)
+        if (type == "windows")
+            board->setText(QString("set HTTP_PROXY=http://127.0.0.1:%1; set HTTPS_PROXY=http://127.0.0.1:%1; set ALL_PROXY=socks5://127.0.0.1:%2").arg(helper->getInboundSettings().httpLocalPort).arg(helper->getInboundSettings().socks5LocalPort));
+        else if (type == "unix")
+            board->setText(QString("export HTTP_PROXY=http://127.0.0.1:%1; export HTTPS_PROXY=http://127.0.0.1:%1; export ALL_PROXY=socks5://127.0.0.1:%2").arg(helper->getInboundSettings().httpLocalPort).arg(helper->getInboundSettings().socks5LocalPort));
     else
-        board->setText(QString("export HTTP_PROXY=socks5://127.0.0.1:%1; export HTTPS_PROXY=socks5://127.0.0.1:%1; export ALL_PROXY=socks5://127.0.0.1:%1").arg(helper->getSocks5Port()));
+        if (type == "windows")
+            board->setText(QString("set HTTP_PROXY=socks5://127.0.0.1:%1; sey HTTPS_PROXY=socks5://127.0.0.1:%1; set ALL_PROXY=socks5://127.0.0.1:%1").arg(helper->getInboundSettings().socks5LocalPort));
+        else if (type == "unix")
+            board->setText(QString("export HTTP_PROXY=socks5://127.0.0.1:%1; export HTTPS_PROXY=socks5://127.0.0.1:%1; export ALL_PROXY=socks5://127.0.0.1:%1").arg(helper->getInboundSettings().socks5LocalPort));
 }
 
 void StatusNotifier::onSetProxyToTelegram()
 {
-    QDesktopServices::openUrl(QString("tg://socks?server=127.0.0.1&port=%2").arg(helper->getSocks5Port()));
+    QDesktopServices::openUrl(QString("tg://socks?server=127.0.0.1&port=%2").arg(helper->getInboundSettings().socks5LocalPort));
 }
 
 #if defined (Q_OS_WIN)
 void StatusNotifier::onInstallTAPDriver()
 {
     ResourceHelper::installTAPDriver();
+}
+
+void StatusNotifier::onEnableUWPLoopback()
+{
+    ResourceHelper::openEnableUWPLoopback();
 }
 #endif
 
@@ -324,7 +366,7 @@ void StatusNotifier::activate()
 
 void StatusNotifier::showNotification(const QString &msg)
 {
-    if (helper->isEnableNotification()) {
+    if (helper->getGeneralSettings().enableNotification) {
 #ifdef Q_OS_LINUX
         //Using DBus to send message.
         QDBusMessage method = QDBusMessage::createMethodCall("org.freedesktop.Notifications","/org/freedesktop/Notifications", "org.freedesktop.Notifications", "Notify");

@@ -1,6 +1,7 @@
 #include "tqprofile.h"
 #include "utils.h"
 #include "confighelper.h"
+#include "v2raystruct.h"
 
 #include <QJsonDocument>
 #include <QUrlQuery>
@@ -13,19 +14,16 @@ TQProfile::TQProfile()
     autoStart = false;
     serverPort = 443;
     name = QObject::tr("Unnamed Profile");
-    verifyCertificate = true;
-    verifyHostname = true;
-    reuseSession = true;
-    sessionTicket = false;
-    reusePort = false;
     tcpFastOpen = false;
-    mux = false;
-    muxConcurrency = 8;
     latency = LATENCY_UNKNOWN;
-    currentUsage = 0;
-    totalUsage = 0;
+    currentDownloadUsage = 0;
+    currentUploadUsage = 0;
+    totalDownloadUsage = 0;
+    totalUploadUsage = 0;
     QDate currentDate = QDate::currentDate();
     nextResetDate = QDate(currentDate.year(), currentDate.month() + 1, 1);
+    // socks5/http only
+    username = "";
     // ss/ssr/snell only
     method = QString("aes-256-cfb");
     protocol = QString("origin");
@@ -38,19 +36,20 @@ TQProfile::TQProfile()
     uuid = QString("");
     alterID = 32;
     security = QString("auto");
-    vmessSettings = ConfigHelper::generateVmessSettings();
+    testsEnabled = QString("none");
     // trojan only
+    reuseSession = true;
+    sessionTicket = false;
     sni = "";
-    websocket = false;
-    websocketDoubleTLS = false;
-    websocketPath = "";
-    websocketHostname = "";
-    websocketObfsPassword = "";
 }
 
 TQProfile::TQProfile(const QString &uri)
 {
-    if (uri.startsWith("ss://"))
+    if (uri.startsWith("socks5://"))
+        *this = TQProfile::fromSocks5Uri(uri.toStdString());
+    else if (uri.startsWith("http://"))
+        *this = TQProfile::fromHttpUri(uri.toStdString());
+    else if (uri.startsWith("ss://"))
         try {
             *this = TQProfile::fromSSUri(uri.toStdString());
         } catch (...) {
@@ -62,6 +61,8 @@ TQProfile::TQProfile(const QString &uri)
         *this = TQProfile::fromVmessUri(uri.toStdString());
     else if (uri.startsWith("trojan://"))
         *this = TQProfile::fromTrojanUri(uri.toStdString());
+    else if (uri.startsWith("snell://"))
+        *this = TQProfile::fromSnellUri(uri.toStdString());
 }
 
 bool TQProfile::equals(const TQProfile &profile) const
@@ -70,17 +71,100 @@ bool TQProfile::equals(const TQProfile &profile) const
          && serverPort == profile.serverPort
          && group == profile.group
          && name == profile.name
-         && verifyCertificate == profile.verifyCertificate
-         && verifyHostname == profile.verifyHostname
          && reuseSession == profile.reuseSession
-         && reusePort == profile.reusePort
-         && tcpFastOpen == profile.tcpFastOpen
-         && mux == profile.mux
-         && websocket == profile.websocket
-         && websocketDoubleTLS == profile.websocketDoubleTLS
-         && websocketPath == profile.websocketPath
-         && websocketHostname == profile.websocketHostname
-         && websocketObfsPassword == profile.websocketObfsPassword);
+         && tcpFastOpen == profile.tcpFastOpen);
+}
+
+TQProfile TQProfile::fromSocks5Uri(const std::string& socks5Uri) const
+{
+    std::string prefix = "socks5://";
+
+    if (socks5Uri.length() < 9) {
+        throw std::invalid_argument("SOCKS5 URI is too short");
+    }
+
+    if (!QString::fromStdString(socks5Uri).startsWith("socks5://")) {
+        throw std::invalid_argument("Invalid SOCKS5 URI");
+    }
+
+    TQProfile result;
+
+    result.type = "socks5";
+
+    //remove the prefix "socks5://" from uri
+    std::string uri(socks5Uri.data() + 9, socks5Uri.length() - 9);
+
+    size_t hashPos = uri.find_last_of('#');
+    if (hashPos != std::string::npos) {
+        // Get the name/remark
+        result.name = QUrl::fromPercentEncoding(QString::fromStdString(uri.substr(hashPos + 1)).toUtf8().data());
+        uri.erase(hashPos);
+    }
+
+    size_t atPos = uri.find_first_of('@');
+    if (atPos != std::string::npos) {
+        QString userInfo = QByteArray::fromBase64(QString::fromStdString(uri.substr(0, atPos)).toUtf8().data());
+        result.username = userInfo.split(":")[0];
+        result.password = userInfo.split(":")[1];
+        uri.erase(0, atPos + 1);
+        size_t colonPos = uri.find_last_of(':');
+        if (colonPos == std::string::npos) {
+            throw std::invalid_argument("Can't find the colon separator between hostname and port");
+        }
+        result.serverAddress = QString::fromStdString(uri.substr(0, colonPos));
+        result.serverPort = std::stoi(uri.substr(colonPos + 1));
+        uri.erase(0, colonPos + 4);
+    } else {
+        throw std::invalid_argument("Can't find the at separator between userInfo and hostname");
+    }
+
+    return result;
+}
+
+TQProfile TQProfile::fromHttpUri(const std::string& httpUri) const
+{
+    std::string prefix = "http://";
+
+    if (httpUri.length() < 7) {
+        throw std::invalid_argument("HTTP URI is too short");
+    }
+
+    if (!QString::fromStdString(httpUri).startsWith("http://")) {
+        throw std::invalid_argument("Invalid HTTP URI");
+    }
+
+    TQProfile result;
+
+    result.type = "http";
+
+    //remove the prefix "http://" from uri
+    std::string uri(httpUri.data() + 7, httpUri.length() - 7);
+
+    size_t hashPos = uri.find_last_of('#');
+    if (hashPos != std::string::npos) {
+        // Get the name/remark
+        result.name = QUrl::fromPercentEncoding(QString::fromStdString(uri.substr(hashPos + 1)).toUtf8().data());
+        uri.erase(hashPos);
+    }
+
+    size_t atPos = uri.find_first_of('@');
+    if (atPos != std::string::npos) {
+        QString userInfo = QByteArray::fromBase64(QString::fromStdString(uri.substr(0, atPos)).toUtf8().data());
+        result.username = userInfo.split(":")[0];
+        result.password = userInfo.split(":")[1];
+        uri.erase(0, atPos + 1);
+        size_t colonPos = uri.find_last_of(':');
+        if (colonPos == std::string::npos) {
+            throw std::invalid_argument("Can't find the colon separator between hostname and port");
+        }
+        result.serverAddress = QString::fromStdString(uri.substr(0, colonPos));
+        result.serverPort = std::stoi(uri.substr(colonPos + 1));
+        uri.erase(0, colonPos + 4);
+    } else {
+        throw std::invalid_argument("Can't find the at separator between userInfo and hostname");
+    }
+
+    return result;
 }
 
 TQProfile TQProfile::fromSSUri(const std::string& ssUri) const
@@ -146,8 +230,6 @@ TQProfile TQProfile::fromOldSSUri(const std::string& ssUri) const
 
     //remove the prefix "ss://" from uri
     std::string uri(ssUri.data() + 5, ssUri.length() - 5);
-    //decode base64
-    uri = Utils::Base64UrlDecode(QString::fromStdString(uri)).toStdString();
 
     size_t hashPos = uri.find_last_of('#');
     if (hashPos != std::string::npos) {
@@ -156,7 +238,9 @@ TQProfile TQProfile::fromOldSSUri(const std::string& ssUri) const
         uri.erase(hashPos);
     }
 
-    qDebug() << QString::fromStdString(uri);
+    //decode base64
+    uri = Utils::Base64UrlDecode(QString::fromStdString(uri)).toStdString();
+
     size_t atPos = uri.find_first_of('@');
     if (atPos != std::string::npos) {
         QString userInfo = QString::fromStdString(uri.substr(0, atPos));
@@ -254,41 +338,37 @@ TQProfile TQProfile::fromVmessUri(const std::string& vmessUri) const
     result.uuid = vmess["id"].toString();
     result.alterID = vmess["aid"].toString().toInt();
 
-    QJsonObject vmessSettings = result.vmessSettings;
-    vmessSettings["network"] = vmess["net"].toString();
+    VmessSettings vmessSettings = result.vmessSettings;
+    vmessSettings.network = vmess["net"].toString().isEmpty() ? "tcp" : vmess["net"].toString();
+    if (vmessSettings.network == "h2")
+        vmessSettings.network = "http";
 
-    if (vmessSettings["network"].toString()  == "tcp") {
-        QJsonObject tcp = vmessSettings["tcp"].toObject();
-        QJsonObject tcpHeader = tcp["header"].toObject();
-        tcpHeader["type"] = vmess["type"].toString();
-        tcp["header"] = tcpHeader;
-        vmessSettings["tcp"] = tcp;
-    } else if (vmessSettings["network"].toString() == "http") {
-        QJsonObject http = vmessSettings["http"].toObject();
-        QJsonArray array;
+    if (vmessSettings.network == "tcp") {
+        vmessSettings.tcp.type = vmess["type"].toString();
+    } else if (vmessSettings.network == "http") {
+        QStringList list;
         foreach(const QString &host, vmess["host"].toString().split(",")) {
-            array.push_back(host);
+            list.push_back(host);
         }
-        http["host"] = array;
-        http["path"] = vmess["path"].toString();
-        vmessSettings["http"] = http;
-    } else if (vmessSettings["network"].toString() == "ws") {
-        QJsonObject ws = vmessSettings["ws"].toObject();
-        QJsonObject wsHeader = ws["host"].toObject()["header"].toObject();
-        wsHeader["Host"] = vmess["host"].toString();
-        ws["header"] = wsHeader;
-        ws["path"] = vmess["path"].toString();
-        vmessSettings["ws"] = ws;
-    } else if (vmessSettings["network"].toString() == "quic") {
-        QJsonObject quic = vmessSettings["quic"].toObject();
-        quic["security"] = vmess["host"];
-        quic["key"] = vmess["path"];
-        vmessSettings["quic"] = quic;
+        vmessSettings.http.host = list;
+        vmessSettings.http.path = vmess["path"].toString();
+    } else if (vmessSettings.network == "ws") {
+        QList<WsHeader> wsHeaders;
+        WsHeader wsHeader;
+        wsHeader.key = "Host";
+        wsHeader.value = vmess["host"].toString();
+        wsHeaders.append(wsHeader);
+        vmessSettings.ws.header = wsHeaders;
+        vmessSettings.ws.path = vmess["path"].toString();
+    } else if (vmessSettings.network == "quic") {
+        vmessSettings.quic.security = vmess["host"].toString();
+        vmessSettings.quic.key = vmess["path"].toString();
     }
 
     QJsonObject tls = vmess["tls"].toObject();
-    tls["enable"] = vmess["tls"] == "tls" ? true : false;
-    vmessSettings["tls"] = tls;
+    vmessSettings.tls.enable = vmess["tls"] == "tls" ? true : false;
+    if (vmessSettings.tls.enable)
+        vmessSettings.tls.serverName = vmess["host"].toString().isEmpty() ? result.serverAddress : vmess["host"].toString();
 
     result.vmessSettings = vmessSettings;
 
@@ -338,16 +418,93 @@ TQProfile TQProfile::fromTrojanUri(const std::string& trojanUri) const
 
     QUrl url(QString::fromStdString(trojanUri));
     QUrlQuery query(url.query());
-    result.tcpFastOpen = query.queryItemValue("tfo").toInt();
-    result.verifyCertificate = !query.queryItemValue("allowInsecure").toInt();
     result.sni = query.queryItemValue("sni");
     if (result.sni.isEmpty())
         result.sni = query.queryItemValue("peer");
+    result.trojanGoSettings.mux.enable = query.queryItemValue("mux").toInt();
+    result.trojanGoSettings.websocket.enable = query.queryItemValue("ws").toInt();
+    result.trojanGoSettings.websocket.path = query.queryItemValue("wspath");
+    result.trojanGoSettings.websocket.host = query.queryItemValue("wshost");
+    result.trojanGoSettings.shadowsocks.enable = query.queryItemValue("ss").toInt();
+    if (!query.queryItemValue("ssmethod").isEmpty())
+        result.trojanGoSettings.shadowsocks.method = query.queryItemValue("ssmethod");
+    result.trojanGoSettings.shadowsocks.password = query.queryItemValue("sspasswd");
+
     result.group = query.queryItemValue("group");
 
     return result;
 }
 
+TQProfile TQProfile::fromSnellUri(const std::string& snellUri) const
+{
+    std::string prefix = "snell://";
+
+    if (snellUri.length() < 8) {
+        throw std::invalid_argument("Snell URI is too short");
+    }
+
+    //prevent line separator casuing wrong password.
+    if (!QString::fromStdString(snellUri).startsWith("snell://")) {
+         throw std::invalid_argument("Invalid Snell URI");
+    }
+
+    TQProfile result;
+
+    result.type = "snell";
+
+    //remove the prefix "snell://" from uri
+    std::string uri(snellUri.data() + 9, snellUri.length() - 9);
+    size_t hashPos = uri.find_last_of('#');
+    if (hashPos != std::string::npos) {
+        // Get the name/remark
+        result.name = QUrl::fromPercentEncoding(QString::fromStdString(uri.substr(hashPos + 1)).toUtf8().data());
+        uri.erase(hashPos);
+    }
+
+    size_t atPos = uri.find_first_of('@');
+    if (atPos != std::string::npos) {
+        QString userInfo = QString::fromStdString(uri.substr(0, atPos));
+        result.method = userInfo.split(":")[0];
+        result.password = userInfo.split(":")[1];
+        uri.erase(0, atPos + 1);
+        size_t colonPos = uri.find_last_of(':');
+        if (colonPos == std::string::npos) {
+            throw std::invalid_argument("Can't find the colon separator between hostname and port");
+        }
+        result.serverAddress = QString::fromStdString(uri.substr(0, colonPos));
+        result.serverPort = std::stoi(uri.substr(colonPos + 1));
+        uri.erase(0, colonPos + 4);
+    } else {
+        throw std::invalid_argument("Can't find the at separator between userInfo and hostname");
+    }
+
+    QUrl url(QString::fromStdString(snellUri));
+    QUrlQuery query(url.query());
+    result.obfs = query.queryItemValue("obfs");
+    result.obfsParam = query.queryItemValue("obfs-host");
+
+    return result;
+}
+
+/**
+ * @brief TQProfile::toSocks5Uri
+ * @return QString uri of socks5 server
+ */
+QString TQProfile::toSocks5Uri() const
+{
+    QString userInfoBase64 = Utils::Base64UrlEncode(username + ":" + password);
+    return "socks5://" + userInfoBase64 + "@" + serverAddress + ":" + QString::number(serverPort) + "#" + name.toUtf8().toPercentEncoding();
+}
+
+/**
+ * @brief TQProfile::toHttpUri
+ * @return QString uri of socks5 server
+ */
+QString TQProfile::toHttpUri() const
+{
+    QString userInfoBase64 = Utils::Base64UrlEncode(username + ":" + password);
+    return "http://" + userInfoBase64 + "@" + serverAddress + ":" + QString::number(serverPort) + "#" + name.toUtf8().toPercentEncoding();
+}
 
 /**
  * @brief TQProfile::toSSUri
@@ -388,29 +545,28 @@ QString TQProfile::toVmessUri() const
     vmessObject["port"] = QString::number(serverPort);
     vmessObject["id"] = uuid;
     vmessObject["aid"] = alterID;
-    vmessObject["net"] = vmessSettings["network"].toString();
-    if (vmessSettings["network"].toString() == "tcp") {
-        vmessObject["type"] = vmessSettings["tcp"].toObject()["header"].toObject()["type"].toString();
-    } if (vmessSettings["network"].toString() == "http") {
-        vmessObject["host"] = vmessSettings["http"].toObject()["host"].toString().replace("\r\n", "");
-        vmessObject["path"] = vmessSettings["http"].toObject()["path"].toString();
-    } else if (vmessSettings["network"].toString() == "kcp")
-        vmessObject["type"] = vmessSettings["kcp"].toObject()["header"].toObject()["type"].toString();
-    else if (vmessSettings["network"].toString() == "ws") {
-        foreach (const QString& key, vmessSettings["ws"].toObject()["header"].toObject().keys())
+    vmessObject["net"] = vmessSettings.network;
+    if (vmessSettings.network == "tcp") {
+        vmessObject["type"] = vmessSettings.tcp.type;
+    } if (vmessSettings.network == "http") {
+        vmessObject["host"] = QJsonArray::fromStringList(vmessSettings.http.host);
+        vmessObject["path"] = vmessSettings.http.path;
+    } else if (vmessSettings.network == "kcp")
+        vmessObject["type"] = vmessSettings.kcp.type;
+    else if (vmessSettings.network == "ws") {
+        foreach (const WsHeader& header, vmessSettings.ws.header)
         {
-            QJsonValue value = vmessSettings["ws"].toObject()["header"].toObject().value(key);
-            if (key == "Host")
-                vmessObject["host"] = value.toString();
+            if (header.key == "Host")
+                vmessObject["host"] = header.value;
         }
-        vmessObject["path"] = vmessSettings["ws"].toObject()["path"].toString();
+        vmessObject["path"] = vmessSettings.ws.path;
     }
-    else if (vmessSettings["network"].toString() == "quic") {
-        vmessObject["type"] = vmessSettings["quic"].toObject()["header"].toObject()["type"].toString();
-        vmessObject["host"] = vmessSettings["quic"].toObject()["security"].toString();
-        vmessObject["path"] = vmessSettings["quic"].toObject()["key"].toString();
+    else if (vmessSettings.network == "quic") {
+        vmessObject["type"] = vmessSettings.quic.type;
+        vmessObject["host"] = vmessSettings.quic.security;
+        vmessObject["path"] = vmessSettings.quic.key;
     }
-    vmessObject["tls"] = vmessObject["tls"].toObject()["enable"].toBool() ? "tls" : "none";
+    vmessObject["tls"] = vmessSettings.tls.enable ? "tls" : "none";
     QJsonDocument uri(vmessObject);
     return "vmess://" + Utils::Base64UrlEncode(uri.toJson());
 }
@@ -422,7 +578,9 @@ QString TQProfile::toVmessUri() const
  */
 QString TQProfile::toTrojanUri() const
 {
-    QString trojanUri = password.toUtf8().toPercentEncoding() + "@" + serverAddress + ":" + QString::number(serverPort) + "?allowinsecure=" + QString::number(int(!verifyCertificate)) + "&tfo=" + QString::number(tcpFastOpen) + "&sni=" + sni + "&mux" + mux + "&ws" + websocket + "&group=" + group.toUtf8().toPercentEncoding();
+    QString trojanUri = password.toUtf8().toPercentEncoding() + "@" + serverAddress + ":" + QString::number(serverPort) + "?allowinsecure=0" + "&sni=" + sni;
+    trojanUri += "&mux=" + QString::number(int(trojanGoSettings.mux.enable)) + "&ws=" + QString::number(int(trojanGoSettings.websocket.enable)) + "&wspath=" + trojanGoSettings.websocket.path + "&wshost=" + trojanGoSettings.websocket.host + "&ss=" + QString::number(int(trojanGoSettings.shadowsocks.enable)) + "&ssmethod=" + trojanGoSettings.shadowsocks.method + "&sspasswd=" + trojanGoSettings.shadowsocks.password;
+    trojanUri += "&group=" + group.toUtf8().toPercentEncoding();
     QByteArray uri = QByteArray(trojanUri.toUtf8());
     uri.prepend("trojan://");
     uri.append("#");
@@ -436,23 +594,22 @@ QString TQProfile::toTrojanUri() const
  */
 QString TQProfile::toSnellUri() const
 {
-    QString userInfoBase64 = Utils::Base64UrlEncode(method + ":" + password);
-    QString snellUri = userInfoBase64 + "@" + serverAddress + ":" + serverPort + "?plugin=obfs-local;obfs=" + obfs + ";obfs-host=" + obfsParam + ";obfs-uri=/";
-    return "snell://" + snellUri;
+    QString snellUri = "chacha20-ietf-poly1305:" + password + "@" + serverAddress + ":" + QString::number(serverPort) + "?obfs=" + obfs + "&obfs-host=" + obfsParam.toUtf8().toPercentEncoding();
+    QByteArray uri = QByteArray(snellUri.toUtf8());
+    uri.prepend("snell://");
+    uri.append("#");
+    uri.append(name.toUtf8().toPercentEncoding());
+    return uri;
 }
 
-// https://stackoverflow.com/questions/61924590/no-match-for-operator-operand-types-are-qdatastream-and-qjsonobject/61926499#61926499
 QDataStream& operator << (QDataStream &out, const TQProfile &p)
 {
-    QJsonDocument vmessSettingsDoc(p.vmessSettings);
-    out << p.type << p.autoStart << p.serverPort << p.name << p.serverAddress << p.verifyCertificate << p.verifyHostname << p.password << p.sni << p.reuseSession << p.sessionTicket << p.reusePort << p.tcpFastOpen << p.mux << p.muxConcurrency << p.websocket << p.websocketDoubleTLS << p.websocketPath << p.websocketHostname << p.websocketObfsPassword << p.method << p.protocol << p.protocolParam << p.obfs << p.obfsParam << p.plugin << p.pluginParam << p.uuid << p.alterID << p.security << vmessSettingsDoc.toJson(QJsonDocument::Compact) << p.latency << p.currentUsage << p.totalUsage << p.lastTime << p.nextResetDate;
+    out << p.type << p.group << p.autoStart << p.serverPort << p.name << p.serverAddress << p.password << p.sni << p.tcpFastOpen << p.reuseSession << p.sessionTicket << p.method << p.protocol << p.protocolParam << p.obfs << p.obfsParam << p.plugin << p.pluginParam << p.uuid << p.alterID << p.security << p.testsEnabled << p.vmessSettings << p.trojanGoSettings << p.latency << p.currentDownloadUsage << p.currentUploadUsage << p.totalDownloadUsage << p.totalUploadUsage << p.lastTime << p.nextResetDate;
     return out;
 }
 
 QDataStream& operator >> (QDataStream &in, TQProfile &p)
 {
-    QByteArray vmessSettingsData;
-    in >> p.type >> p.autoStart >> p.serverPort >> p.name >> p.serverAddress >> p.verifyCertificate >> p.verifyHostname >> p.password >> p.sni >> p.reuseSession >> p.sessionTicket >> p.reusePort >> p.tcpFastOpen >> p.mux >> p.muxConcurrency >> p.websocket >> p.websocketDoubleTLS >> p.websocketPath >> p.websocketHostname >> p.websocketObfsPassword >> p.method >> p.protocol >> p.protocolParam >> p.obfs >> p.obfsParam >> p.plugin >> p.pluginParam >> p.uuid >> p.alterID >> p.security >> vmessSettingsData >> p.latency >> p.currentUsage >> p.totalUsage >> p.lastTime >> p.nextResetDate;
-    p.vmessSettings = QJsonDocument::fromJson(vmessSettingsData).object();
+    in >> p.type >> p.group >> p.autoStart >> p.serverPort >> p.name >> p.serverAddress >> p.password >> p.sni >> p.tcpFastOpen >> p.reuseSession >> p.sessionTicket >> p.method >> p.protocol >> p.protocolParam >> p.obfs >> p.obfsParam >> p.plugin >> p.pluginParam >> p.uuid >> p.alterID >> p.security >> p.testsEnabled >> p.vmessSettings >> p.trojanGoSettings >> p.latency >> p.currentDownloadUsage >> p.currentUploadUsage >> p.totalDownloadUsage >> p.totalUploadUsage >> p.lastTime >> p.nextResetDate;
     return in;
 }

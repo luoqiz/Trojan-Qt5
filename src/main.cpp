@@ -13,8 +13,13 @@
 #include "logger.h"
 #include "midman.h"
 #include "eventfilter.h"
+#include "themehelper.h"
+#include "ntphelper.h"
+#include "tuntaphelper.h"
 
-#include "LetsMove/PFMoveApplication.h"
+#if defined (Q_OS_MAC)
+#include "letsmove/PFMoveApplication.h"
+#endif
 
 #if defined (Q_OS_WIN)
 #include "urlschemeregister.h"
@@ -60,13 +65,10 @@ void setupApplication(QApplication &a)
         a.setFont(QFont("Segoe UI", 9, QFont::Normal, false));
     }
 #endif
+
 #if defined(Q_OS_WIN) || defined(Q_OS_MAC)
     QIcon::setThemeName("Breeze");
 #endif
-
-    QTranslator *trojanqt5t = new QTranslator(&a);
-    trojanqt5t->load(QString(":/i18n/trojan-qt5_%1").arg(QLocale::system().name()));
-    a.installTranslator(trojanqt5t);
 }
 
 #if defined (Q_OS_MAC)
@@ -114,11 +116,22 @@ bool dockClickHandler(id self,SEL _cmd,...)
 
 int main(int argc, char *argv[])
 {
-
+    qRegisterMetaTypeStreamOperators<GeneralSettings>("GeneralSettings");
+    qRegisterMetaTypeStreamOperators<InboundSettings>("InboundSettings");
+    qRegisterMetaTypeStreamOperators<OutboundSettings>("OutboundSettings");
+    qRegisterMetaTypeStreamOperators<TestSettings>("TestSettings");
+    qRegisterMetaTypeStreamOperators<SubscribeSettings>("SubscribeSettings");
+    qRegisterMetaTypeStreamOperators<GraphSettings>("GraphSettings");
+    qRegisterMetaTypeStreamOperators<RouterSettings>("RouterSettings");
+    qRegisterMetaTypeStreamOperators<CoreSettings>("CoreSettings");
+    qRegisterMetaTypeStreamOperators<TUNTAPSettings>("TUNTAPSettings");
+    qRegisterMetaTypeStreamOperators<STUNSettings>("STUNSettings");
+    qRegisterMetaTypeStreamOperators<ModeSettings>("ModeSettings");
     qRegisterMetaTypeStreamOperators<TQProfile>("TQProfile");
     qRegisterMetaTypeStreamOperators<TQSubscribe>("TQSubscribe");
 
     QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
+    QCoreApplication::setAttribute(Qt::AA_UseHighDpiPixmaps);
 #if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
     QGuiApplication::setHighDpiScaleFactorRoundingPolicy(Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
 #endif
@@ -150,8 +163,32 @@ int main(int argc, char *argv[])
 
     ConfigHelper conf(configFile);
 
+    // copy and install resources
+#if defined (Q_OS_WIN)
+    ResourceHelper::copyNfsdk2();
+    ResourceHelper::copyNatTypeTester();
+#elif defined (Q_OS_MAC)
+    if (!ResourceHelper::isSystemProxyHelperExist())
+        ResourceHelper::installSystemProxyHelper();
+#endif
+    ResourceHelper::copyDatFiles();
+
     // setup the theme here
-    a.setStyle(conf.getTheme());
+    a.setStyle(conf.getGeneralSettings().theme);
+
+    // register theme dynamic changer
+    ThemeHelper::registerListen();
+
+    // apply light/dark theme
+    ThemeHelper::setupTheme();
+
+    // apply language according to settings
+    QTranslator *trojanqt5t = new QTranslator(&a);
+    if (conf.getGeneralSettings().language == "Follow System")
+        trojanqt5t->load(QString(":/i18n/trojan-qt5_%1").arg(QLocale::system().name()));
+    else
+        trojanqt5t->load(QString(":/i18n/trojan-qt5_%1").arg(conf.getGeneralSettings().language));
+    a.installTranslator(trojanqt5t);
 
 #if defined (Q_OS_WIN)
     UrlSchemeRegister *reg;
@@ -162,9 +199,15 @@ int main(int argc, char *argv[])
     MainWindow w(&conf);
     mainWindow = &w;
 
-    a.installEventFilter(new EventFilter(&w));
+    //a.installEventFilter(new EventFilter(&w));
 
-    if (conf.isOnlyOneInstance() && w.isInstanceRunning()) {
+    if (conf.getGeneralSettings().checkTimeOnStartup) {
+        // check time accuracy
+        NTPHelper *ntp = new NTPHelper();
+        ntp->checkTime();
+    }
+
+    if (conf.getGeneralSettings().onlyOneInstace && w.isInstanceRunning()) {
         return -1;
     }
 
@@ -179,7 +222,7 @@ int main(int argc, char *argv[])
     //start all servers which were configured to start at startup
     w.startAutoStartConnections();
 
-    if (!conf.isHideWindowOnStartup()) {
+    if (!conf.getGeneralSettings().hideWindowOnStartup) {
         w.show();
     }
 

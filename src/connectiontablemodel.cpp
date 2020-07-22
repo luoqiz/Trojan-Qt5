@@ -1,4 +1,5 @@
 #include "connectiontablemodel.h"
+#include "confighelper.h"
 
 ConnectionTableModel::ConnectionTableModel(QObject *parent) :
     QAbstractTableModel(parent)
@@ -166,7 +167,8 @@ bool ConnectionTableModel::isExisted(Connection *newCon)
     for (auto &i : items) {
         Connection *con = i->getConnection();
         if (con->getProfile().serverAddress == newCon->getProfile().serverAddress &&
-            con->getProfile().serverPort == newCon->getProfile().serverPort)
+            con->getProfile().serverPort == newCon->getProfile().serverPort &&
+            ConfigHelper::exportVmessSettings(con->getProfile().vmessSettings) == ConfigHelper::exportVmessSettings(newCon->getProfile().vmessSettings))
             return true;
     }
     return false;
@@ -190,8 +192,6 @@ void ConnectionTableModel::replace(Connection *newCon)
             p.protocolParam = newCon->getProfile().protocolParam;
             p.obfs = newCon->getProfile().obfs;
             p.obfsParam = newCon->getProfile().obfsParam;
-            p.mux = newCon->getProfile().mux;
-            p.websocket = newCon->getProfile().websocket;
             p.name = newCon->getProfile().name;
             p.vmessSettings = newCon->getProfile().vmessSettings;
             p.group = newCon->getProfile().group;
@@ -217,6 +217,18 @@ QList<TQProfile> ConnectionTableModel::getAllServers()
     }
 
     return servers;
+}
+
+TQProfile ConnectionTableModel::getConnectedServer()
+{
+    for (auto &i : items) {
+        Connection *con = i->getConnection();
+        if (con->isRunning()) {
+            return con->getProfile();
+        }
+    }
+
+    return TQProfile();
 }
 
 void ConnectionTableModel::onConnectionStateChanged(bool running)
