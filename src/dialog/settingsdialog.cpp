@@ -47,6 +47,7 @@ SettingsDialog::SettingsDialog(ConfigHelper *ch, QWidget *parent) :
     ui->socks5PortLineEdit->setText(QString::number(helper->getInboundSettings().socks5LocalPort));
     ui->httpPortLineEdit->setText(QString::number(helper->getInboundSettings().httpLocalPort));
     ui->pacPortLineEdit->setText(QString::number(helper->getInboundSettings().pacLocalPort));
+    ui->redirectorPortLineEdit->setText(QString::number(helper->getInboundSettings().redirectorPort));
     ui->haproxyPortLineEdit->setText(QString::number(helper->getInboundSettings().haproxyPort));
     ui->haproxyStatusPortLineEdit->setText(QString::number(helper->getInboundSettings().haproxyStatusPort));
     // outbound settings

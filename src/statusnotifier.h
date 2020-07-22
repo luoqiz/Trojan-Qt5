@@ -42,6 +42,7 @@ public:
     void onTrojanSubscribeSettings();
 #if defined (Q_OS_WIN)
     void onInstallTAPDriver();
+    void onEnableUWPLoopback();
 #endif
     void showServerSpeedPlot();
 
@@ -102,6 +103,7 @@ private:
     QAction *minimiseRestoreAction;
 #if defined (Q_OS_WIN)
     QAction *installTapDriver;
+    QAction *enableUWPLoopback;
 #endif
     QSystemTrayIcon systray;
     MainWindow *window;

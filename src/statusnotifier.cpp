@@ -133,6 +133,7 @@ void StatusNotifier::initActions()
     setProxyToTelegram = new QAction(tr("Set Proxy to Telegram"));
 #if defined (Q_OS_WIN)
     installTapDriver = new QAction(tr("Install TAP Driver"));
+    enableUWPLoopback = new QAction(tr("Enable UWP Loopback"));
 #endif
 
     terminalWinStyle = new QAction(tr("Copy as Windows Style"));
@@ -150,13 +151,13 @@ void StatusNotifier::initActions()
     systrayMenu.addSeparator();
     systrayMenu.addMenu(serverMenu);
     systrayMenu.addMenu(subscribeMenu);
-    systrayMenu.addAction(serverLoadBalance);
-    systrayMenu.addSeparator();
     systrayMenu.addAction(serverSpeedPlot);
+    systrayMenu.addSeparator();
     systrayMenu.addMenu(copyTerminalProxyCommandMenu);
     systrayMenu.addAction(setProxyToTelegram);
 #if defined (Q_OS_WIN)
     systrayMenu.addAction(installTapDriver);
+    systrayMenu.addAction(enableUWPLoopback);
 #endif
     systrayMenu.addSeparator();
 
@@ -190,6 +191,7 @@ void StatusNotifier::initConnections()
     connect(setProxyToTelegram, &QAction::triggered, this, [this]() { onSetProxyToTelegram(); });
 #if defined (Q_OS_WIN)
     connect(installTapDriver, &QAction::triggered, this, [this]() { onInstallTAPDriver(); });
+    connect(enableUWPLoopback, &QAction::triggered, this, [this]() { onEnableUWPLoopback(); });
 #endif
 }
 
@@ -343,6 +345,11 @@ void StatusNotifier::onSetProxyToTelegram()
 void StatusNotifier::onInstallTAPDriver()
 {
     ResourceHelper::installTAPDriver();
+}
+
+void StatusNotifier::onEnableUWPLoopback()
+{
+    ResourceHelper::openEnableUWPLoopback();
 }
 #endif
 

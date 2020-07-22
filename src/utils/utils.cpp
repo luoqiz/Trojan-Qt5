@@ -137,11 +137,11 @@ QList<WsHeader> Utils::convertQJsonObject(const QJsonObject &object)
     return wsHeaders;
 }
 
-void Utils::createProcessWithoutWindow(QString application, QString arg)
+PROCESS_INFORMATION Utils::createProcessWithoutWindow(QString application, QString arg)
 {
 #if defined (Q_OS_WIN)
-    LPTSTR APPLICATION = (LPTSTR) application.utf16();
-    LPTSTR ARG = (LPTSTR) arg.utf16();
+    QString path = application + " " + arg;
+    LPTSTR ARG = (LPTSTR) path.utf16();
 
     STARTUPINFO siStartupInfo;
     PROCESS_INFORMATION piProcessInfo;
@@ -152,11 +152,69 @@ void Utils::createProcessWithoutWindow(QString application, QString arg)
     siStartupInfo.dwFlags = STARTF_USESHOWWINDOW | STARTF_FORCEOFFFEEDBACK | STARTF_USESTDHANDLES;
     siStartupInfo.wShowWindow = SW_HIDE;
 
-    if(CreateProcess(APPLICATION, ARG, 0, 0, FALSE, 0, 0, 0, &siStartupInfo, &piProcessInfo) == FALSE)
+    if(CreateProcess(NULL, ARG, 0, 0, FALSE, 0, 0, 0, &siStartupInfo, &piProcessInfo) == FALSE)
     {
         CloseHandle(piProcessInfo.hThread);
         CloseHandle(piProcessInfo.hProcess);
     }
+
+    return piProcessInfo;
+#endif
+}
+
+QString Utils::getSystemDirectory()
+{
+    char buffer[MAX_PATH];
+    DWORD n = GetSystemDirectoryA(buffer, sizeof(buffer));
+    std::string result(buffer, n);
+    return QString::fromStdString(result);
+}
+
+QString Utils::getSystemVersion()
+{
+    DWORD dwVersion = 0;
+    DWORD dwMajorVersion = 0;
+    DWORD dwMinorVersion = 0;
+    dwVersion = GetVersion();
+
+    dwMajorVersion = (DWORD)(LOBYTE(LOWORD(dwVersion)));
+    dwMinorVersion = (DWORD)(HIBYTE(LOWORD(dwVersion)));
+
+    return QString("%1.%2").arg(dwMajorVersion).arg(dwMinorVersion);
+}
+
+QString Utils::getFileVersion(QString fName)
+{
+#if defined (Q_OS_WIN)
+    // first of all, GetFileVersionInfoSize
+    DWORD dwHandle;
+    DWORD dwLen = GetFileVersionInfoSize(fName.toStdWString().c_str(), &dwHandle);
+
+    // GetFileVersionInfo
+    LPVOID lpData = new BYTE[dwLen];
+    if (!GetFileVersionInfo(fName.toStdWString().c_str(), dwHandle, dwLen, lpData)) {
+        delete[] lpData;
+        return "";
+    }
+
+    // VerQueryValue
+    VS_FIXEDFILEINFO* lpBuffer = NULL;
+    UINT uLen;
+
+    if (!VerQueryValue(lpData,
+        QString("\\").toStdWString().c_str(),
+        (LPVOID*)& lpBuffer,
+        &uLen)) {
+        delete[] lpData;
+        return "";
+    } else {
+        return QString::number((lpBuffer->dwFileVersionMS >> 16) & 0xffff) + "." +
+               QString::number((lpBuffer->dwFileVersionMS) & 0xffff) + "." +
+               QString::number((lpBuffer->dwFileVersionLS >> 16) & 0xffff) + "." +
+               QString::number((lpBuffer->dwFileVersionLS) & 0xffff);
+    }
+#else
+    return "";
 #endif
 }
 

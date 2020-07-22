@@ -70,7 +70,6 @@ void SubscribeManager::updateAllSubscribes()
                 TQProfile profile = TQProfile(list[x]);
                 if (!isFiltered(profile.name) && (x < helper->getSubscribeSettings().maximumSubscribe || helper->getSubscribeSettings().maximumSubscribe == 0)) {
                     if (helper->getSubscribeSettings().overwriteAllowInsecure) {
-                        profile.verifyCertificate = false;
                         profile.vmessSettings.tls.allowInsecure = true;
                      }
                     if (helper->getSubscribeSettings().overwriteAllowInsecureCiphers) {
